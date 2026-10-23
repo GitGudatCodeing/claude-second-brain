@@ -23,6 +23,14 @@ def test_a_label_counts_once_and_misses_score_zero():
     assert s == {"ndcg@5": 0.0, "mrr": 0.0, "recall@5": 0.0}
 
 
+def test_grep_baseline_ranks_by_matching_words(index, vault, monkeypatch):
+    monkeypatch.setattr(run_eval, "server", index)
+    index.index_paths([str(vault)])
+    top = run_eval.grep_search("water the tomatoes in july", 5)
+    assert top[0][0].endswith("garden.md")
+    assert run_eval.grep_search("zzz qqq", 5) == []
+
+
 def test_context_tokens_reads_latest_usage_and_survives_partial_lines(tmp_path):
     t = tmp_path / "t.jsonl"
     lines = [
@@ -35,6 +43,22 @@ def test_context_tokens_reads_latest_usage_and_survives_partial_lines(tmp_path):
     ]
     t.write_text("\n".join(lines), encoding="utf-8")
     assert handoff_common.context_tokens(handoff_common.read_entries(t)) == 215
+
+
+def test_context_guard_is_silent_below_the_hard_limit_and_fires_above(tmp_path, monkeypatch, capsys):
+    import io
+
+    import context_guard
+
+    monkeypatch.setattr(context_guard, "load_config", lambda: {"hard": 1000})
+    t = tmp_path / "t.jsonl"
+    for tokens, fires in ((999, False), (1000, True)):
+        t.write_text(json.dumps({"message": {"usage": {"input_tokens": tokens}}}), encoding="utf-8")
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"transcript_path": str(t)})))
+        monkeypatch.setattr("sys.argv", ["context_guard.py"])
+        assert context_guard.main() == 0
+        out = capsys.readouterr().out
+        assert ("hard limit" in out) is fires
 
 
 def test_abs_paths_expands_project_dir():

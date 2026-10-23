@@ -3,7 +3,7 @@
   "model": "BAAI/bge-small-en-v1.5",
   "questions": 32,
   "scores": {
-    "ndcg@5": 0.782302279385572,
+    "ndcg@5": 0.7817056394869136,
     "mrr": 0.828125,
     "recall@5": 0.8489583333333334
   }

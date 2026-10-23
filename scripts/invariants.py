@@ -154,7 +154,7 @@ def hook_commands(settings: Path, event: str) -> list[str]:
     return [h["command"] for g in s.get("hooks", {}).get(event, []) for h in g.get("hooks", [])]
 
 
-@check("handoff: guard and snapshot hooks configured once, thresholds valid, command present")
+@check("handoff: guard and snapshot hooks configured once, threshold valid, command present")
 def check_handoff():
     out = []
     user_settings, project_settings = HOME / ".claude/settings.json", ROOT / ".claude/settings.json"
@@ -173,8 +173,8 @@ def check_handoff():
                 if not Path(path).exists():
                     out.append(f"hook path missing: {path}")
     cfg = json.loads((ROOT / ".claude/handoff.json").read_text(encoding="utf-8"))
-    if not 0 < cfg["soft_tokens"] < cfg["hard_tokens"]:
-        out.append("handoff.json: need 0 < soft_tokens < hard_tokens")
+    if not isinstance(cfg.get("hard_tokens"), int) or cfg["hard_tokens"] <= 0:
+        out.append("handoff.json: hard_tokens must be a positive integer")
     if not any((d / "handoff.md").is_file() for d in (ROOT / ".claude/commands", HOME / ".claude/commands")):
         out.append("handoff.md missing from .claude/commands and ~/.claude/commands (/handoff command)")
     if "docs/handoffs/auto" not in ignores_for(ROOT):

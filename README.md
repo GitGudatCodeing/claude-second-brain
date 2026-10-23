@@ -51,7 +51,7 @@ flowchart LR
 |---|---|---|
 | SessionStart | `scripts/invariants.py --hook` | 10 checks: MCP servers launchable, graph sources exist, index fresh, hooks wired, golden labels valid, lessons well-formed, context budget. |
 | PostToolUse (Write, Edit) | `mcp/reindex_hook.py` | Re-indexes the edited file if it sits under a registered source. Never blocks. |
-| UserPromptSubmit | `scripts/context_guard.py` | Reads the real context size from the transcript. Suggests `/handoff` at 300k tokens, requires it at 450k (`.claude/handoff.json`). |
+| UserPromptSubmit | `scripts/context_guard.py` | Reads the real context size from the transcript. Silent until 450k tokens (`.claude/handoff.json`), then requires `/handoff`: a note plus a card to start the fresh session. |
 | PreCompact | `scripts/precompact_snapshot.py` | Saves recent requests and touched files to `docs/handoffs/auto/` as a fallback before compaction. |
 
 ### Search
@@ -88,15 +88,10 @@ Needs [uv](https://docs.astral.sh/uv/) (it fetches Python 3.10 to 3.13), Node.js
 ```bash
 git clone https://github.com/GitGudatCodeing/claude-second-brain.git
 cd claude-second-brain
-uv sync --project mcp
-cp .mcp.json.example .mcp.json
+uv run --project mcp python scripts/setup.py
 ```
 
-1. In `.mcp.json`, set `MEMORY_FILE_PATH` to an absolute path, for example `~/.mcp-memory/memory.jsonl` written out in full.
-2. Start `claude` in the folder and approve the project MCP servers and hooks.
-3. Ask Claude to index the folder: `run index_paths with <absolute path of this folder>`.
-4. Try it on the sample vault: `/recall garden sensor battery life`.
-5. Check the wiring any time: `python scripts/invariants.py`.
+`setup.py` writes `.mcp.json` (memory graph at `~/.mcp-memory/memory.jsonl` unless you pass `--memory-file`), indexes the folder and runs the invariants. Then start `claude` in the folder, approve the project MCP servers and hooks, and try `/recall garden sensor battery life`. Check the wiring any time with `python scripts/invariants.py`.
 
 Your own notes go in `notes/`. Delete `example-vault/` when you no longer need the eval, and update `eval/golden.jsonl` with questions about your own notes.
 
@@ -112,8 +107,11 @@ VAULT_INDEX_DB=/tmp/csb-eval.db uv run --project mcp python eval/run_eval.py --m
 | Mode | NDCG@5 | MRR | Recall@5 |
 |---|---|---|---|
 | hybrid (what `search_notes` serves) | 0.782 | 0.828 | 0.849 |
-| keyword only (FTS5) | 0.583 | 0.646 | 0.672 |
-| vector only | 0.762 | 0.781 | 0.865 |
+| keyword only (FTS5) | 0.584 | 0.646 | 0.672 |
+| vector only | 0.771 | 0.797 | 0.865 |
+| naive grep, no index (baseline) | 0.426 | 0.496 | 0.484 |
+
+The grep row ranks chunks by how many query words they contain, roughly what searching with `rg` per word gives you. On the author's private vault the gap is similar: hybrid 0.568, grep 0.323.
 
 CI fails if any hybrid metric drops more than 0.03 below `eval/baseline.json`. Scores are identical on Ubuntu and Windows.
 

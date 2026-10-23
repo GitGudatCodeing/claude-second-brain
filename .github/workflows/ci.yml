@@ -16,33 +16,24 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10
         with:
           python-version: "3.12"
 
-      - name: Use scratch locations for the index, model cache and memory graph
+      - name: Use scratch locations for the index and model cache
         run: |
           echo "VAULT_INDEX_DB=$RUNNER_TEMP/vault-index.db" >> "$GITHUB_ENV"
           echo "VAULT_MODEL_CACHE=$RUNNER_TEMP/models" >> "$GITHUB_ENV"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/models
           key: fastembed-bge-small-en-v1.5-${{ runner.os }}
 
-      - name: Install
-        run: uv sync --project mcp
-
-      - name: MCP config from the example
-        run: |
-          uv run --project mcp python -c "
-          import json, os
-          c = json.load(open('.mcp.json.example'))
-          c['mcpServers']['memory']['env']['MEMORY_FILE_PATH'] = os.environ['RUNNER_TEMP'] + '/memory.jsonl'
-          json.dump(c, open('.mcp.json', 'w'), indent=2)
-          "
+      - name: One-command setup (what a new user runs)
+        run: uv run --project mcp python scripts/setup.py --memory-file "$RUNNER_TEMP/memory.jsonl"
 
       - name: Lint
         if: runner.os == 'Linux'

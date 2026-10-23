@@ -23,3 +23,6 @@ Build our own: a UserPromptSubmit hook (`scripts/context_guard.py`) reads the tr
 - Starting the new session without a click needs the user's request in that turn; when the guard triggers it, the new session appears as a card to click.
 - Made global (same day): `/handoff` lives in `~/.claude/commands/`, and the two hooks belong in `~/.claude/settings.json` so every project uses them. Notes from any project land in SecondBrain `docs/handoffs/` with a `project:` field. The user adds the user-level hooks by hand (Claude is not allowed to edit its own user settings); until then they run from the SecondBrain project settings.
 - Invariant `handoff` checks the hooks (at either level, flagging duplicates), thresholds, the global command and the `auto/` index exclusion.
+
+## Update (2026-10-23): hard limit only
+The soft notice was dropped at the user's request: a reminder at 300k interrupted work and added nothing. The guard is now silent until the hard limit (450k), then requires the handoff note and a session card. `handoff.json` holds only `hard_tokens`.

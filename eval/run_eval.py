@@ -4,7 +4,7 @@ Scores exactly what search_notes serves: server.hybrid_search with the tool's
 default limit (so the fusion depth matches production), cut at K for metrics.
 
   uv run --project mcp python eval/run_eval.py                 hybrid vs baseline
-  uv run --project mcp python eval/run_eval.py --modes all     also fts-only and vec-only
+  uv run --project mcp python eval/run_eval.py --modes all     also fts-only, vec-only and a no-index grep baseline
   uv run --project mcp python eval/run_eval.py -v              per-question detail
   uv run --project mcp python eval/run_eval.py --save-baseline record current hybrid scores
 
@@ -72,10 +72,28 @@ def score(q: dict, results) -> tuple[dict, list]:
     }, found
 
 
+def grep_search(query: str, limit: int) -> list[tuple[str, str, str, float]]:
+    """Comparison baseline with no index: rank chunks by how many query words they contain
+    (case-insensitive substring, like a grep per word), then by total occurrences."""
+    words = [w for w in (t.lower() for t in re.findall(r"\w+", query)) if w not in server.STOPWORDS]
+    rows = server.db().execute("SELECT f.path, c.heading, c.text FROM chunks c JOIN files f ON f.id=c.file_id")
+    scored = []
+    for path, heading, text in rows:
+        low = f"{heading}\n{text}".lower()
+        hits = sum(1 for w in words if w in low)
+        if hits:
+            scored.append((hits, sum(low.count(w) for w in words), path, heading, text))
+    scored.sort(key=lambda s: (-s[0], -s[1]))
+    return [(p, h, t, float(n)) for n, _, p, h, t in scored[:limit]]
+
+
 def run(mode: str, golden: list[dict], verbose: bool) -> dict:
     per_q = []
     for q in golden:
-        results = server.hybrid_search(q["q"], SERVED_LIMIT, mode=mode)
+        if mode == "grep":
+            results = grep_search(q["q"], SERVED_LIMIT)
+        else:
+            results = server.hybrid_search(q["q"], SERVED_LIMIT, mode=mode)
         s, found = score(q, results)
         per_q.append(s)
         if verbose:
@@ -88,7 +106,7 @@ def run(mode: str, golden: list[dict], verbose: bool) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--modes", default="hybrid", help="hybrid, or 'all' for hybrid,fts,vec")
+    ap.add_argument("--modes", default="hybrid", help="hybrid, or 'all' for hybrid, fts, vec and the grep baseline")
     ap.add_argument("--save-baseline", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--model", help="evaluate another fastembed model in a separate scratch index "
@@ -109,7 +127,7 @@ def main() -> int:
         fresh = not server.db().execute("SELECT 1 FROM sources").fetchone()  # e.g. a new clone or CI
         print(f"syncing index: {server.index_paths([str(ROOT)] if fresh else None)}")
     golden = load_golden()
-    modes = ["hybrid", "fts", "vec"] if args.modes == "all" else ["hybrid"]
+    modes = ["hybrid", "fts", "vec", "grep"] if args.modes == "all" else ["hybrid"]
     scores = {}
     for mode in modes:
         if args.verbose:

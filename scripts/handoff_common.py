@@ -13,7 +13,7 @@ TAIL_BYTES = 4_000_000  # usage is on every assistant message, so the tail is en
 
 def load_config() -> dict:
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
-    return {"soft": int(cfg["soft_tokens"]), "hard": int(cfg["hard_tokens"])}
+    return {"hard": int(cfg["hard_tokens"])}
 
 
 def read_entries(transcript: Path, tail: int | None = TAIL_BYTES) -> list[dict]:

@@ -8,6 +8,7 @@ Personal knowledge base. Markdown files are the record; the search index and the
 
 ## Where things are
 - `notes/`: the Obsidian vault (`inbox/`, `topics/`, `daily/`); `notes/index.md` maps it.
+- `example-vault/`: fictional sample data for the eval, with the same layout (`notes/`, `docs/adr/`, `docs/lessons.md`). Until the user has notes of their own, it is what searches find; never treat it as the user's own facts.
 - `docs/adr/`: architecture decision records (`/adr`).
 - `docs/lessons.md`: dated lessons written as directives (`/learn`, via `scripts/learn.py`). Never edit by hand.
 - `mcp/`: the `vault-index` MCP server (hybrid FTS5 + sqlite-vec search) and its re-index hook.
@@ -35,7 +36,7 @@ Personal knowledge base. Markdown files are the record; the search index and the
 - `/handoff [topic]`: write a handoff note and continue in a fresh session.
 
 ## Long sessions
-- One session per task. A context guard hook warns at the soft limit and requires `/handoff` at the hard limit (`.claude/handoff.json`). Prefer a handoff over `/compact`.
+- One session per task. A context guard hook requires `/handoff` at the hard limit (`.claude/handoff.json`): write the note and propose the new session as a card. No notice before that. Prefer a handoff over `/compact`.
 - When a session starts from a handoff note, read it first and set its `status` to `picked-up`.
 
 ## Maintenance
