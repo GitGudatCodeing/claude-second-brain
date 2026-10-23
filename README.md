@@ -60,13 +60,14 @@ flowchart LR
 flowchart LR
     q["query"] --> sw["drop stopwords"] --> fts["FTS5 bm25<br/>top 4 x limit"]
     q --> emb["embed with<br/>bge-small-en-v1.5"] --> vec["sqlite-vec kNN<br/>top 4 x limit"]
-    fts --> rrf["reciprocal rank fusion<br/>k = 60"]
+    fts --> rrf["reciprocal rank fusion<br/>k = 60, keyword weight 0.1"]
     vec --> rrf
     rrf --> out["top chunks with<br/>file path and heading path"]
 ```
 
 - Markdown is chunked by heading (up to about 1,200 characters), so every hit carries a path like `Recipe box data model > Units`.
 - Indexing is incremental: unchanged files are skipped by mtime and content hash; deleted files are dropped on the next sync.
+- Keyword ranks count at a tenth of vector ranks: they break ties and lift exact terms (ids, tool names) without outvoting meaning.
 - A per-folder `.indexignore` keeps tooling code out of results.
 
 MCP tools: `index_paths`, `search_notes`, `get_note`, `list_sources`, `remove_source`.
@@ -110,24 +111,25 @@ VAULT_INDEX_DB=/tmp/csb-eval.db uv run --project mcp python eval/run_eval.py --m
 
 | Mode | NDCG@5 | MRR | Recall@5 |
 |---|---|---|---|
-| hybrid (what `search_notes` serves) | 0.716 | 0.755 | 0.807 |
+| hybrid (what `search_notes` serves) | 0.782 | 0.828 | 0.849 |
 | keyword only (FTS5) | 0.583 | 0.646 | 0.672 |
-| vector only | 0.773 | 0.797 | 0.865 |
+| vector only | 0.762 | 0.781 | 0.865 |
 
 CI fails if any hybrid metric drops more than 0.03 below `eval/baseline.json`. Scores are identical on Ubuntu and Windows.
 
 ### What worked and what did not
-Experiments on the author's private vault, each tested alone against a saved baseline:
+Each change tested alone against a saved baseline, mostly on the author's private vault:
 
 | Change | Effect on NDCG@5 | Kept |
 |---|---|---|
+| Keyword weight 0.1 in the fusion (was 1.0) | private +0.037, sample +0.066 | yes |
 | Exclude tooling code (`.indexignore`) | +0.063 | yes |
 | Drop stopwords from the FTS query | +0.018 | yes |
 | all-MiniLM-L6-v2 instead of bge-small | -0.024 | no |
 | Weight headings higher in bm25 (x2 to x10) | -0.015 to -0.036 | no |
 | bge-base + query prefix (768 dims) | +0.030, about one question | no: 3x the model for noise-level gain |
 
-Open finding: on the sample vault, vector-only beats hybrid. Keyword matches add noise for paraphrased questions. Fusion weighting is the next experiment. Details in [`docs/adr/`](docs/adr/).
+With equal weights, vector-only beat hybrid on the sample vault while hybrid won on the private one (jargon needs keywords). A sweep of keyword weight by RRF k on both sets found one setting that wins on both; vector-only is still worse on the private vault, so keywords stay in at a low weight. Details in [`docs/adr/`](docs/adr/).
 
 ## Repository layout
 ```

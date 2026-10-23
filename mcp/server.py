@@ -270,6 +270,9 @@ def index_paths(paths: list[str] | None = None, reindex: bool = False) -> str:
 
 
 RRF_K = 60
+# Keyword ranks count at a tenth of vector ranks: a tie-breaker and jargon booster, not an equal vote.
+# Beat equal weights on both golden sets (docs/adr/2026-10-23-fts-weight-in-fusion.md).
+FTS_WEIGHT = 0.1
 
 
 def hybrid_search(
@@ -286,7 +289,7 @@ def hybrid_search(
         for rank, (cid,) in enumerate(
             con.execute("SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT ?", (fq, pool))
         ):
-            ranks[cid] = ranks.get(cid, 0) + 1 / (RRF_K + rank)
+            ranks[cid] = ranks.get(cid, 0) + (FTS_WEIGHT if mode == "hybrid" else 1) / (RRF_K + rank)
     if mode in ("hybrid", "vec"):
         qv = embed([query])[0]
         for rank, (cid,) in enumerate(
