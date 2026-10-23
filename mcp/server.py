@@ -122,11 +122,13 @@ def chunk_text(text: str, is_markdown: bool) -> list[tuple[str, str]]:
                 cut = para.rfind("\n", 0, CHUNK_CHARS)
                 cut = cut if cut > CHUNK_CHARS // 2 else CHUNK_CHARS
                 if cur:
-                    out.append((head, cur)); cur = ""
+                    out.append((head, cur))
+                    cur = ""
                 out.append((head, para[:cut].strip()))
                 para = para[cut:]
             if cur and len(cur) + len(para) > CHUNK_CHARS:
-                out.append((head, cur)); cur = ""
+                out.append((head, cur))
+                cur = ""
             cur = f"{cur}\n\n{para}" if cur else para
         if cur.strip():
             out.append((head, cur.strip()))
@@ -200,7 +202,7 @@ def index_file(con: sqlite3.Connection, p: Path, force: bool) -> str:
     file_id = cur.lastrowid
     if chunks:
         vecs = embed([f"{h}\n{t}" if h else t for h, t in chunks])
-        for i, ((h, t), v) in enumerate(zip(chunks, vecs)):
+        for i, ((h, t), v) in enumerate(zip(chunks, vecs, strict=True)):
             cid = con.execute(
                 "INSERT INTO chunks(file_id, ord, heading, text) VALUES(?,?,?,?)", (file_id, i, h, t)
             ).lastrowid

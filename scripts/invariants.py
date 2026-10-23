@@ -107,7 +107,7 @@ def check_memory_graph():
         return []  # created on first write; not an error
     out, names = [], set()
     lessons = lesson_ids()
-    for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+    for line in p.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         rec = json.loads(line)
@@ -120,7 +120,7 @@ def check_memory_graph():
                 for lid in re.findall(r"L-\d{4}", obs):
                     if lid not in lessons:
                         out.append(f"{rec['name']}: refers to unknown lesson {lid}")
-    for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+    for line in p.read_text(encoding="utf-8").splitlines():
         if line.strip():
             rec = json.loads(line)
             if rec.get("type") == "relation" and not {rec["from"], rec["to"]} <= names:
@@ -318,7 +318,7 @@ def check_lessons():
         if m and m.group(1) not in statuses:
             out.append(f"{lid}: superseded by unknown {m.group(1)}")
     blocks = re.split(r"^## L-\d{4} .*$", text, flags=re.M)[1:]
-    for lid, b in zip(ids, blocks):
+    for lid, b in zip(ids, blocks, strict=True):
         for field in ("Lesson", "Cause", "Detect"):
             if f"**{field}:**" not in b:
                 out.append(f"{lid}: missing {field}")

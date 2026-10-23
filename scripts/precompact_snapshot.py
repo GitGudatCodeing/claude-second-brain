@@ -24,7 +24,10 @@ def user_prompts(entries: list[dict]) -> list[str]:
         if d.get("type") != "user" or d.get("isMeta") or not isinstance(m, dict):
             continue
         c = m.get("content")
-        texts = [c] if isinstance(c, str) else [b.get("text", "") for b in c or [] if isinstance(b, dict) and b.get("type") == "text"]
+        if isinstance(c, str):
+            texts = [c]
+        else:
+            texts = [b.get("text", "") for b in c or [] if isinstance(b, dict) and b.get("type") == "text"]
         for t in texts:
             t = t.strip()
             if t and not t.startswith("<"):  # skip command wrappers, reminders and tool output

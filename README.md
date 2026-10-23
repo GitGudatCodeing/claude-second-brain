@@ -1,8 +1,10 @@
 # claude-second-brain
 
+[![CI](https://github.com/GitGudatCodeing/claude-second-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/GitGudatCodeing/claude-second-brain/actions/workflows/ci.yml)
+
 A local, private memory system for Claude Code: markdown notes as the record, hybrid search over them through an MCP server, decision records and lessons as first-class files, and hooks that keep it all in sync.
 
-> Status: early. Tests, CI and a demo are coming.
+> Status: early. A demo is coming.
 
 ## What it does
 - **Hybrid search** (`mcp/server.py`): SQLite FTS5 keywords plus sqlite-vec embeddings (fastembed, CPU), merged with reciprocal rank fusion. One file, offline.
@@ -41,6 +43,14 @@ VAULT_INDEX_DB=/tmp/csb-eval.db uv run --project mcp python eval/run_eval.py --m
 Vector-only beats hybrid on this corpus: keyword matches add noise for paraphrased questions. Tuning the fusion is the next experiment, kept only if it beats `eval/baseline.json`.
 
 Your own notes go in `notes/`; delete `example-vault/` if you do not need the eval.
+
+## Tests and CI
+```bash
+uv run --project mcp --with pytest pytest tests -q
+uvx ruff check .
+```
+
+The tests use a fake bag-of-words embedder, so they run in about a second without downloading a model. CI runs lint, tests, the retrieval eval and the invariants on Ubuntu and Windows for every push.
 
 ## Design decisions
 See `docs/adr/`, including the search experiments that did not work.

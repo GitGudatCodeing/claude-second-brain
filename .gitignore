@@ -1,6 +1,8 @@
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
 .export-stamp
 # Your own MCP config (absolute paths); start from .mcp.json.example
 .mcp.json

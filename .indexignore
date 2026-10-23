@@ -3,5 +3,10 @@
 mcp
 scripts
 eval
+tests
+# Tool caches and local MCP config: not knowledge, and they change between runs.
+.pytest_cache
+.ruff_cache
+.mcp.json
 # Mechanical pre-compaction snapshots (raw user prompts); curated handoffs one level up are indexed.
 docs/handoffs/auto
