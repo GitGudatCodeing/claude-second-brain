@@ -10,6 +10,9 @@ default limit (so the fusion depth matches production), cut at K for metrics.
 
 Exit 1 if any hybrid metric drops more than MAX_DROP below the saved baseline.
 
+With an empty index (no sources yet), this folder is registered and indexed first.
+Set VAULT_INDEX_DB to a scratch file to keep the eval away from your real index.
+
 Golden labels: {"path": relative to SecondBrain, "heading": substring of the chunk
 heading ("" = any chunk of the file), "grade": 2 highly relevant, 1 partly}.
 A label counts once, at the rank of its first matching chunk.
@@ -103,7 +106,8 @@ def main() -> int:
         server.DIM = dim  # the scratch index gets its own schema; adopting a new size needs a reindex
         print(f"scratch index {server.DB_PATH}: {server.index_paths([str(ROOT)])}")
     else:
-        print(f"syncing index: {server.index_paths()}")
+        fresh = not server.db().execute("SELECT 1 FROM sources").fetchone()  # e.g. a new clone or CI
+        print(f"syncing index: {server.index_paths([str(ROOT)] if fresh else None)}")
     golden = load_golden()
     modes = ["hybrid", "fts", "vec"] if args.modes == "all" else ["hybrid"]
     scores = {}
