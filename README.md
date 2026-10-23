@@ -8,9 +8,9 @@ A local, private long-term memory for [Claude Code](https://claude.com/claude-co
 
 Everything runs on your machine: one SQLite file, a CPU embedding model, no cloud services.
 
-<!-- Demo GIF: see the recording plan; add as docs/demo.gif
-![Demo: /recall answering from the sample vault with sources](docs/demo.gif)
--->
+![Demo: session-start check, hybrid search, /recall answering from the sample vault with sources, and the eval](docs/demo.gif)
+
+<sub>Terminal replay of real output from a fresh clone with the sample vault; only the typing animation is added.</sub>
 
 ## Why
 Claude Code forgets everything between sessions. The usual fixes are a huge `CLAUDE.md` (expensive on every turn) or a vector store nobody can read or fix. This project takes a different line:
