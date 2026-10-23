@@ -35,7 +35,7 @@ flowchart LR
     vi["vault-index MCP server<br/>mcp/server.py"]
     db[("vault-index.db<br/>FTS5 + sqlite-vec")]
     mem["memory MCP server"]
-    graph[("memory.jsonl<br/>entities and relations")]
+    kg[("memory.jsonl<br/>entities and relations")]
 
     cc -- "Write / Edit" --> files
     cc -- "PostToolUse hook<br/>reindex_hook.py" --> db
@@ -43,8 +43,8 @@ flowchart LR
     vi --> db
     files -- "index_paths" --> db
     cc -- "search_nodes" --> mem
-    mem --> graph
-    graph -. "each fact names its source file" .-> files
+    mem --> kg
+    kg -. "each fact names its source file" .-> files
 ```
 
 | Hook | Script | What it does |
