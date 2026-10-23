@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.export-stamp
+# Your own MCP config (absolute paths); start from .mcp.json.example
+.mcp.json
+# Raw pre-compaction snapshots contain your prompts
+docs/handoffs/auto/
+.claude/settings.local.json

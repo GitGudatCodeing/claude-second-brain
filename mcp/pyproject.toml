@@ -1,0 +1,10 @@
+[project]
+name = "vault-index-mcp"
+version = "0.1.0"
+description = "Local hybrid (FTS5 + sqlite-vec) search MCP server for markdown vaults and codebases"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "mcp>=1.2,<2",
+    "sqlite-vec>=0.1.6",
+    "fastembed>=0.4",
+]

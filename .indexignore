@@ -1,0 +1,7 @@
+# Paths (relative to this folder) that vault-index never indexes.
+# Tooling code, not knowledge: it crowded notes out of search results (see eval/).
+mcp
+scripts
+eval
+# Mechanical pre-compaction snapshots (raw user prompts); curated handoffs one level up are indexed.
+docs/handoffs/auto

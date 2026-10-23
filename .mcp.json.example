@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "vault-index": {
+      "command": "uv",
+      "args": ["run", "--project", "mcp", "python", "mcp/server.py"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "env": {
+        "MEMORY_FILE_PATH": "/absolute/path/to/.mcp-memory/memory.jsonl"
+      }
+    }
+  }
+}
