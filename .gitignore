@@ -9,3 +9,4 @@ __pycache__/
 # Raw pre-compaction snapshots contain your prompts
 docs/handoffs/auto/
 .claude/settings.local.json
+dist/

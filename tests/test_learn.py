@@ -51,3 +51,14 @@ def test_written_file_passes_the_lessons_invariant(lessons, monkeypatch, capsys)
     run(monkeypatch, capsys, "Rule", "--cause", "c", "--detect", "d")
     monkeypatch.setattr(invariants, "ROOT", lessons.parent.parent)
     assert invariants.check_lessons() == []
+
+
+def test_supersede_with_existing_text_changes_nothing(lessons, monkeypatch, capsys):
+    base = ("--cause", "c", "--detect", "d")
+    run(monkeypatch, capsys, "Rule A", *base)
+    run(monkeypatch, capsys, "Rule B", *base)
+    before = lessons.read_text(encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["learn.py", "--supersede", "L-0001", "rule b", *base])
+    assert learn.main() == 1
+    assert "left unchanged" in capsys.readouterr().out
+    assert lessons.read_text(encoding="utf-8") == before

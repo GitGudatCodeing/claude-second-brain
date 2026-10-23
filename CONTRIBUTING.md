@@ -19,3 +19,6 @@ python scripts/invariants.py
 - **Lessons go through `scripts/learn.py`**, never by hand: lesson, cause, how to detect it.
 - **No real personal data** in `example-vault/`, tests or issues. Everything there is fictional.
 - **No new dependencies or hooks without a measured need.** Hooks must never block a session: catch errors and exit 0.
+
+## Releasing
+Set the same version in `mcp/pyproject.toml` and `server.json`, add it to `CHANGELOG.md`, then push a tag `vX.Y.Z`. The release workflow publishes `vault-index` to PyPI (trusted publishing) and then to the MCP registry.

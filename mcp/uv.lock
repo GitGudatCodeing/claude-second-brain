@@ -1658,8 +1658,8 @@ wheels = [
 ]
 
 [[package]]
-name = "vault-index-mcp"
-version = "0.1.0"
+name = "vault-index"
+version = "0.2.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastembed" },

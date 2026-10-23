@@ -1,10 +1,42 @@
 [project]
-name = "vault-index-mcp"
-version = "0.1.0"
+name = "vault-index"
+version = "0.2.0"
 description = "Local hybrid (FTS5 + sqlite-vec) search MCP server for markdown vaults and codebases"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10,<3.14"
+keywords = ["mcp", "claude", "search", "sqlite-vec", "markdown", "obsidian"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Text Processing :: Indexing",
+]
 dependencies = [
     "mcp>=1.2,<2",
     "sqlite-vec>=0.1.6",
     "fastembed>=0.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/GitGudatCodeing/claude-second-brain"
+Issues = "https://github.com/GitGudatCodeing/claude-second-brain/issues"
+
+[project.scripts]
+vault-index = "vault_index:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+# The repo runs server.py in place; the wheel ships it as the module vault_index.
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.hatch.build.targets.wheel.force-include]
+"server.py" = "vault_index.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["server.py", "README.md", "pyproject.toml"]
+
+[tool.uv]
+package = false  # `uv run --project mcp` keeps using the source file, not an installed copy

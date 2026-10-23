@@ -21,12 +21,13 @@ def main() -> None:
 
         if p.suffix.lower() not in server.EXTENSIONS or not p.is_file():
             return
-        if any(part in server.SKIP_DIRS for part in p.parts):
-            return
         con = server.db()
         sources = [r[0] for r in con.execute("SELECT path FROM sources")]
         owner = next((s for s in sources if str(p) == s or str(p).startswith(s.rstrip("\\/") + os.sep)), None)
         if owner is None or server.is_ignored(p, Path(owner)):
+            return
+        # Like iter_files: skip folders below the source only, so a vault under e.g. ~/build still works.
+        if any(part in server.SKIP_DIRS for part in p.relative_to(owner).parts[:-1]):
             return
         result = server.index_file(con, p, force=False)
         con.commit()

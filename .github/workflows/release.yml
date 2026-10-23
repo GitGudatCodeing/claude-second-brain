@@ -1,0 +1,53 @@
+name: Release
+
+# Push a tag like v0.2.0 (matching mcp/pyproject.toml and server.json) to publish
+# vault-index to PyPI (trusted publishing, no token) and then to the MCP registry.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+
+      - name: Check the tag matches the package and server.json versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          grep -q "^version = \"$tag\"" mcp/pyproject.toml || { echo "mcp/pyproject.toml is not $tag"; exit 1; }
+          [ "$(jq -r .version server.json)" = "$tag" ] || { echo "server.json is not $tag"; exit 1; }
+
+      - name: Build
+        run: uv build mcp --out-dir dist
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  mcp-registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install mcp-publisher (pinned, checksum from the release's checksums file)
+        run: |
+          curl -fsSL -o mcp-publisher.tar.gz https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+
+      - name: Log in with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish (retries while PyPI makes the new version visible)
+        run: |
+          for i in 1 2 3 4 5; do ./mcp-publisher publish && exit 0; sleep 30; done
+          exit 1

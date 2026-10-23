@@ -10,7 +10,7 @@ Everything runs on your machine: one SQLite file, a CPU embedding model, no clou
 
 ![Demo: session-start check, hybrid search, /recall answering from the sample vault with sources, and the eval](docs/demo.gif)
 
-<sub>Terminal replay of real output from a fresh clone with the sample vault; only the typing animation is added.</sub>
+<sub>Terminal replay of real output from a fresh clone of v0.1.0 with the sample vault (eval then had 32 questions); only the typing animation is added.</sub>
 
 ## Why
 Claude Code forgets everything between sessions. The usual fixes are a huge `CLAUDE.md` (expensive on every turn) or a vector store nobody can read or fix. This project takes a different line:
@@ -98,7 +98,7 @@ Your own notes go in `notes/`. Delete `example-vault/` when you no longer need t
 On Windows, Claude Code runs hooks through Git Bash; the hook commands already use forward slashes.
 
 ## Retrieval eval
-`example-vault/` is a fictional person's notes, decisions and lessons. `eval/golden.jsonl` has 32 questions about it and about this repo's own docs, worded differently from the notes on purpose, so keyword overlap alone does not find most answers. (Keep golden questions out of indexed files like this README, or they compete with the real answers.)
+`example-vault/` is a fictional person's notes, decisions and lessons. `eval/golden.jsonl` has 44 questions about it and about this repo's own docs, worded differently from the notes on purpose, so keyword overlap alone does not find most answers. The last 12 are hard paraphrases that share almost no words with their answer. (Keep golden questions out of indexed files like this README, or they compete with the real answers.)
 
 ```bash
 VAULT_INDEX_DB=/tmp/csb-eval.db uv run --project mcp python eval/run_eval.py --modes all -v
@@ -106,12 +106,25 @@ VAULT_INDEX_DB=/tmp/csb-eval.db uv run --project mcp python eval/run_eval.py --m
 
 | Mode | NDCG@5 | MRR | Recall@5 |
 |---|---|---|---|
-| hybrid (what `search_notes` serves) | 0.782 | 0.828 | 0.849 |
-| keyword only (FTS5) | 0.584 | 0.646 | 0.672 |
-| vector only | 0.771 | 0.797 | 0.865 |
-| naive grep, no index (baseline) | 0.426 | 0.496 | 0.484 |
+| hybrid (what `search_notes` serves) | 0.697 | 0.739 | 0.758 |
+| keyword only (FTS5) | 0.491 | 0.544 | 0.576 |
+| vector only | 0.715 | 0.739 | 0.803 |
+| naive grep, no index (baseline) | 0.333 | 0.367 | 0.420 |
 
-The grep row ranks chunks by how many query words they contain, roughly what searching with `rg` per word gives you. On the author's private vault the gap is similar: hybrid 0.568, grep 0.323.
+The grep row ranks chunks by how many query words they contain, roughly what searching with `rg` per word gives you.
+
+On the sample vault, vector-only now edges out hybrid: the hard paraphrases give keywords nothing to match. On the author's private vault (41 questions) hybrid wins clearly: hybrid 0.542, vector 0.490, keyword 0.448, grep 0.339. Real notes are full of names and jargon, so hybrid stays the default.
+
+### Compared with basic-memory
+[basic-memory](https://github.com/basicmachines-co/basic-memory) is a popular markdown memory MCP server with its own hybrid search. `eval/compare_basic_memory.py` runs it (v0.24.1, same bge-small model) on a copy of the same markdown files and scores both on the same 44 questions. basic-memory returns whole notes, so both are scored per file here (vault-index chunks collapsed to their file):
+
+| System (file level) | NDCG@5 | MRR | Recall@5 |
+|---|---|---|---|
+| vault-index hybrid | 0.792 | 0.808 | 0.875 |
+| basic-memory, default search | 0.619 | 0.611 | 0.750 |
+| basic-memory, vector only | 0.708 | 0.736 | 0.814 |
+
+basic-memory does much more than search (it writes notes, builds a graph from them, offers cloud sync); this compares retrieval only. Its default search varied by about 0.005 between runs. It is not run in CI.
 
 CI fails if any hybrid metric drops more than 0.03 below `eval/baseline.json`. Scores are identical on Ubuntu and Windows.
 
@@ -133,7 +146,7 @@ With equal weights, vector-only beat hybrid on the sample vault while hybrid won
 ```
 mcp/            vault-index MCP server and re-index hook
 scripts/        invariants, learn.py, context guard, pre-compact snapshot
-eval/           golden set, baseline, run_eval.py
+eval/           golden set, baseline, run_eval.py, compare_basic_memory.py
 tests/          pytest suite (fake embedder, no model download)
 example-vault/  fictional sample notes for the eval
 docs/adr/       decision records for this system

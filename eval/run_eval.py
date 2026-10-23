@@ -83,7 +83,7 @@ def grep_search(query: str, limit: int) -> list[tuple[str, str, str, float]]:
         hits = sum(1 for w in words if w in low)
         if hits:
             scored.append((hits, sum(low.count(w) for w in words), path, heading, text))
-    scored.sort(key=lambda s: (-s[0], -s[1]))
+    scored.sort(key=lambda s: (-s[0], -s[1], s[2].replace("\\", "/").lower(), s[3]))  # ties: path, heading (same on any OS)
     return [(p, h, t, float(n)) for n, _, p, h, t in scored[:limit]]
 
 

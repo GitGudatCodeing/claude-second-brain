@@ -131,6 +131,9 @@ def main() -> int:
         if args.supersede not in {e["id"] for e in entries(text)}:
             ap.error(f"unknown id {args.supersede}")
         text, msg = add(text, args, today, supersedes=args.supersede)
+        if msg.startswith("no-op"):
+            print(f"{msg}; {args.supersede} left unchanged")
+            return 1
         new_id = msg.split()[-1]
         text = set_status(text, args.supersede, f"superseded by {new_id} ({today})")
         msg += f", superseding {args.supersede}"

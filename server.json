@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.GitGudatCodeing/vault-index",
+  "description": "Local hybrid keyword + vector search (SQLite FTS5 + sqlite-vec) over markdown vaults and code.",
+  "repository": {
+    "url": "https://github.com/GitGudatCodeing/claude-second-brain",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "vault-index",
+      "version": "0.2.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "VAULT_INDEX_DB",
+          "description": "Path to the SQLite index file (default ~/.mcp-memory/vault-index.db)",
+          "isRequired": false
+        },
+        {
+          "name": "VAULT_MODEL_CACHE",
+          "description": "Embedding model cache folder (default ~/.mcp-memory/models)",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

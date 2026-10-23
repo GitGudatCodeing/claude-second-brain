@@ -5,7 +5,7 @@
 1. Checks that uv and npx are on PATH (npx runs the memory graph server).
 2. Writes .mcp.json from .mcp.json.example with an absolute memory file path
    (default ~/.mcp-memory/memory.jsonl). Keeps an existing .mcp.json unless --force.
-3. Indexes this folder (the first run downloads the embedding model, about 130 MB).
+3. Indexes this folder (the first run downloads the embedding model, about 65 MB).
 4. Runs the invariants and prints what to do next.
 """
 from __future__ import annotations

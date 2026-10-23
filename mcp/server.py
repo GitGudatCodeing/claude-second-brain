@@ -8,6 +8,7 @@ Env:
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import sqlite3
@@ -182,26 +183,29 @@ def drop_file(con: sqlite3.Connection, file_id: int) -> None:
 def index_file(con: sqlite3.Connection, p: Path, force: bool) -> str:
     key = str(p)
     st = p.stat()
-    if st.st_size > MAX_FILE_BYTES:
-        return "skipped"
     row = con.execute("SELECT id, mtime, hash FROM files WHERE path=?", (key,)).fetchone()
     if row and not force and abs(row[1] - st.st_mtime) < 1e-6:
         return "unchanged"
     try:
-        text = p.read_text(encoding="utf-8")
+        text = p.read_text(encoding="utf-8") if st.st_size <= MAX_FILE_BYTES else None
     except (UnicodeDecodeError, OSError):
+        text = None
+    if text is None:  # too big or unreadable now: never keep serving its old chunks
+        if row:
+            drop_file(con, row[0])
         return "skipped"
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     if row and not force and row[2] == digest:
         con.execute("UPDATE files SET mtime=? WHERE id=?", (st.st_mtime, row[0]))
         return "unchanged"
+    chunks = chunk_text(text, p.suffix.lower() in {".md", ".markdown"})
+    # Embed before touching the index, so a failure leaves the old version in place.
+    vecs = embed([f"{h}\n{t}" if h else t for h, t in chunks]) if chunks else []
     if row:
         drop_file(con, row[0])
-    chunks = chunk_text(text, p.suffix.lower() in {".md", ".markdown"})
     cur = con.execute("INSERT INTO files(path, mtime, hash) VALUES(?,?,?)", (key, st.st_mtime, digest))
     file_id = cur.lastrowid
     if chunks:
-        vecs = embed([f"{h}\n{t}" if h else t for h, t in chunks])
         for i, ((h, t), v) in enumerate(zip(chunks, vecs, strict=True)):
             cid = con.execute(
                 "INSERT INTO chunks(file_id, ord, heading, text) VALUES(?,?,?,?)", (file_id, i, h, t)
@@ -214,17 +218,26 @@ def index_file(con: sqlite3.Connection, p: Path, force: bool) -> str:
 def sync_source(con: sqlite3.Connection, root: Path, force: bool) -> dict:
     stats = {"added": 0, "updated": 0, "unchanged": 0, "skipped": 0, "removed": 0}
     seen: set[str] = set()
-    for p in iter_files(root):
-        seen.add(str(p))
-        stats[index_file(con, p, force)] += 1
-    prefix = str(root).rstrip("\\/")
-    for fid, path in con.execute("SELECT id, path FROM files").fetchall():
-        under = path == prefix or path.startswith(prefix + os.sep)
-        if under and path not in seen:
-            drop_file(con, fid)
-            stats["removed"] += 1
+    try:
+        for p in iter_files(root):
+            seen.add(str(p))
+            stats[index_file(con, p, force)] += 1
+        for fid, path in files_under(con, str(root)):
+            if path not in seen:
+                drop_file(con, fid)
+                stats["removed"] += 1
+    except BaseException:
+        con.rollback()  # the connection is long-lived; a later commit must never keep half a file
+        raise
     con.commit()
     return stats
+
+
+def files_under(con: sqlite3.Connection, source: str) -> list[tuple[int, str]]:
+    """(id, path) of indexed files at or below `source`. A plain string match: LIKE treats _ and % as wildcards."""
+    prefix = source.rstrip("\\/")
+    return [(fid, path) for fid, path in con.execute("SELECT id, path FROM files").fetchall()
+            if path == prefix or path.startswith(prefix + os.sep)]
 
 
 # ---------- search ----------
@@ -283,31 +296,52 @@ def hybrid_search(
     con = db()
     pool = limit * 4
     ranks: dict[int, float] = {}
+    # With a prefix, both sides rank only chunks under it, so a filtered search never comes back
+    # short just because other folders filled the candidate pool.
+    scope = json.dumps(prefix_chunk_ids(con, path_prefix)) if path_prefix else None
 
     fq = fts_query(query)
     if fq and mode in ("hybrid", "fts"):
-        for rank, (cid,) in enumerate(
-            con.execute("SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT ?", (fq, pool))
-        ):
+        sql = "SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ?"
+        args: tuple = (fq,)
+        if scope:
+            sql, args = sql + " AND rowid IN (SELECT value FROM json_each(?))", (fq, scope)
+        for rank, (cid,) in enumerate(con.execute(sql + " ORDER BY bm25(chunks_fts) LIMIT ?", (*args, pool))):
             ranks[cid] = ranks.get(cid, 0) + (FTS_WEIGHT if mode == "hybrid" else 1) / (RRF_K + rank)
     if mode in ("hybrid", "vec"):
         qv = embed([query])[0]
-        for rank, (cid,) in enumerate(
-            con.execute("SELECT rowid FROM chunks_vec WHERE embedding MATCH ? AND k=? ORDER BY distance", (qv, pool))
-        ):
+        if scope:  # exact distances over the scoped chunks (vec0's kNN index cannot filter by path)
+            rows = con.execute(
+                "SELECT rowid FROM chunks_vec WHERE rowid IN (SELECT value FROM json_each(?))"
+                " ORDER BY vec_distance_l2(embedding, ?) LIMIT ?", (scope, qv, pool))
+        else:
+            rows = con.execute("SELECT rowid FROM chunks_vec WHERE embedding MATCH ? AND k=? ORDER BY distance", (qv, pool))
+        for rank, (cid,) in enumerate(rows):
             ranks[cid] = ranks.get(cid, 0) + 1 / (RRF_K + rank)
 
     results = []
-    for cid, score in sorted(ranks.items(), key=lambda kv: -kv[1]):
+    for cid, score in sorted(ranks.items(), key=lambda kv: -kv[1])[:limit]:
         path, heading, text = con.execute(
             "SELECT f.path, c.heading, c.text FROM chunks c JOIN files f ON f.id=c.file_id WHERE c.id=?", (cid,)
         ).fetchone()
-        if path_prefix and not path.lower().startswith(path_prefix.lower()):
-            continue
         results.append((path, heading, text, score))
-        if len(results) >= limit:
-            break
     return results
+
+
+def prefix_chunk_ids(con: sqlite3.Connection, path_prefix: str) -> list[int]:
+    """Ids of chunks whose file path starts with `path_prefix`: an absolute path, or one relative
+    to any registered source (e.g. "docs/lessons.md"). Case-insensitive; / and \\ are the same."""
+    def norm(s: str) -> str:
+        return s.replace("\\", "/").lower()
+
+    p = Path(path_prefix).expanduser()
+    if p.is_absolute():
+        bases = [norm(str(p))]
+    else:
+        rel = norm(path_prefix).removeprefix("./")
+        bases = [norm(s).rstrip("/") + "/" + rel for (s,) in con.execute("SELECT path FROM sources")]
+    rows = con.execute("SELECT c.id, f.path FROM chunks c JOIN files f ON f.id=c.file_id")
+    return [cid for cid, path in rows if norm(path).startswith(tuple(bases))]
 
 
 @mcp.tool()
@@ -341,12 +375,9 @@ def list_sources() -> str:
     con = db()
     out = []
     for (s,) in con.execute("SELECT path FROM sources ORDER BY path").fetchall():
-        like = s.rstrip("\\/") + os.sep + "%"
-        nf = con.execute("SELECT COUNT(*) FROM files WHERE path=? OR path LIKE ?", (s, like)).fetchone()[0]
-        nc = con.execute(
-            "SELECT COUNT(*) FROM chunks c JOIN files f ON f.id=c.file_id WHERE f.path=? OR f.path LIKE ?", (s, like)
-        ).fetchone()[0]
-        out.append(f"{s}: {nf} files, {nc} chunks")
+        ids = [fid for fid, _ in files_under(con, s)]
+        nc = sum(con.execute("SELECT COUNT(*) FROM chunks WHERE file_id=?", (fid,)).fetchone()[0] for fid in ids)
+        out.append(f"{s}: {len(ids)} files, {nc} chunks")
     return "\n".join(out) or "No sources registered."
 
 
@@ -356,13 +387,17 @@ def remove_source(path: str) -> str:
     con = db()
     s = str(Path(path).expanduser().resolve())
     con.execute("DELETE FROM sources WHERE path=?", (s,))
-    like = s.rstrip("\\/") + os.sep + "%"
-    ids = [r[0] for r in con.execute("SELECT id FROM files WHERE path=? OR path LIKE ?", (s, like))]
+    ids = [fid for fid, _ in files_under(con, s)]
     for fid in ids:
         drop_file(con, fid)
     con.commit()
     return f"Removed {s} ({len(ids)} files dropped from index)."
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console entry point (`uvx vault-index`): serve over stdio."""
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

@@ -8,6 +8,7 @@ tests
 .pytest_cache
 .ruff_cache
 .mcp.json
+server.json
 .github
 # Mechanical pre-compaction snapshots (raw user prompts); curated handoffs one level up are indexed.
 docs/handoffs/auto

@@ -86,3 +86,9 @@ Written by `scripts/learn.py` (use `/learn`). Never delete entries; supersede or
 **Cause:** TaskStop ended the parent task but a child node process kept the worktree folder locked, so removal failed.
 **Detect:** git worktree remove fails with a permission or 'in use' error on Windows.
 **Tags:** windows, git, worktree, dev-server
+
+## L-0032 · 2026-10-23 · active
+**Lesson:** Run vault-index through uvx with --python 3.12; without it uvx picks the newest installed Python, where onnxruntime (via fastembed) has no wheels and install fails.
+**Cause:** Smoke test of the built wheel: 'uvx --from dist/*.whl vault-index' resolved for cp315 and failed on onnxruntime, although requires-python is <3.14.
+**Detect:** A uvx or uv tool command for vault-index or fastembed that has no --python flag, or an error 'no wheels with a matching Python ABI tag' for onnxruntime.
+**Tags:** vault-index, packaging, uv
