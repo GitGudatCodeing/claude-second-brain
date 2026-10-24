@@ -1,7 +1,16 @@
 # Changelog
 
-## Unreleased
-- README: `uvx vault-index` quickstart and PyPI badge.
+## 0.3.0 (unreleased)
+- `vault-index` CLI: `--help`, `--version`, `index PATH...` (progress on stderr), `search QUERY`, `sources`. No command still serves MCP.
+- Indexing commits per file and skips files that vanish mid-sync, so one deleted temp file no longer rolls back a whole run, and the hook no longer waits on a long write lock.
+- `index_paths` checks every path before registering any; a source missing on disk (an unplugged drive) keeps its index.
+- The index records its embedding model; a different model gets a clear "reindex=True" message, and `reindex=True` rebuilds the vector table.
+- Clearer errors: offline first run (model download), `get_note` on a deleted file.
+- `list_sources` uses one query.
+- `export_public.py` refuses to overwrite commits on the public repo that the private source lacks.
+- CI also runs Python 3.10 and 3.13; the PyPI publish action is pinned to a commit; Dependabot; `SECURITY.md`.
+- README: `uvx vault-index` quickstart, PyPI badge, keep `VAULT_INDEX_DB` the same for server and hooks.
+- Full audit (audit-suite, 6 lenses) and 6 regression tests (44 in total).
 
 ## 0.2.0 (2026-10-24)
 - `vault-index` is packaged for PyPI (`uvx vault-index`) and described in `server.json` for the MCP registry. A tag push publishes both (`.github/workflows/release.yml`, trusted publishing, no tokens).

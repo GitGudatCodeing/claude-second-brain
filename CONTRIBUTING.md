@@ -2,6 +2,8 @@
 
 Issues and pull requests are welcome. Keep changes small and measured.
 
+This repo is generated from the maintainer's own vault by an export script. Merged pull requests are ported back there before the next export, so a merge may be followed by a commit that restates it.
+
 ## Before a pull request
 ```bash
 uv sync --project mcp

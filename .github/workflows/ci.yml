@@ -11,6 +11,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        python: ["3.12"]
+        include:  # both ends of the supported range
+          - os: ubuntu-latest
+            python: "3.10"
+          - os: ubuntu-latest
+            python: "3.13"
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -20,7 +26,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v10.2.0  # no floating major tags after v7; pin an exact release
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
 
       - name: Use scratch locations for the index and model cache
         run: |
@@ -36,7 +42,7 @@ jobs:
         run: uv run --project mcp python scripts/setup.py --memory-file "$RUNNER_TEMP/memory.jsonl"
 
       - name: Lint
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.python == '3.12'
         run: uvx ruff check .
 
       - name: Tests

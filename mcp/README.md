@@ -14,6 +14,14 @@ claude mcp add vault-index -- uvx --python 3.12 vault-index
 
 Then ask Claude to index a folder, for example: "index_paths ~/notes". After that, `search_notes` finds paraphrased answers with file path and heading. The first run downloads the embedding model (about 65 MB).
 
+## From a terminal
+```bash
+uvx --python 3.12 vault-index index ~/notes      # index a folder (progress on stderr); no paths re-syncs all
+uvx --python 3.12 vault-index search "why did the probe fail"
+uvx --python 3.12 vault-index --help
+```
+With no command it serves MCP over stdio. Indexing a large vault from the terminal first keeps the first tool call short.
+
 ## Tools
 - `index_paths(paths, reindex=False)`: add folders or files as sources and sync them. With no paths, re-syncs every source (new, changed and deleted files).
 - `search_notes(query, limit=8, path_prefix=None)`: hybrid search; returns chunks with file path and heading path.

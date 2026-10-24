@@ -51,7 +51,13 @@ def embedder():
         from fastembed import TextEmbedding
 
         MODEL_CACHE.mkdir(parents=True, exist_ok=True)
-        _embedder = TextEmbedding(MODEL_NAME, cache_dir=str(MODEL_CACHE))
+        try:
+            _embedder = TextEmbedding(MODEL_NAME, cache_dir=str(MODEL_CACHE))
+        except Exception as e:
+            raise RuntimeError(
+                f"Could not load embedding model {MODEL_NAME} into {MODEL_CACHE}: {e}. "
+                "The first run downloads it (about 65 MB) and needs internet; set VAULT_MODEL_CACHE to move it."
+            ) from e
     return _embedder
 
 
@@ -80,10 +86,34 @@ def db() -> sqlite3.Connection:
             CREATE INDEX IF NOT EXISTS chunks_file ON chunks(file_id);
             CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(text, heading);
             CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(embedding float[{DIM}]);
+            CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """
         )
+        # Indexes from before the meta table were all built with the current model.
+        con.execute("INSERT OR IGNORE INTO meta VALUES('model', ?)", (f"{MODEL_NAME} ({DIM})",))
+        con.commit()
         _db = con
     return _db
+
+
+def model_mismatch(con: sqlite3.Connection) -> str | None:
+    """An explanation if the index was built with another embedding model, else None."""
+    built = con.execute("SELECT value FROM meta WHERE key='model'").fetchone()[0]
+    want = f"{MODEL_NAME} ({DIM})"
+    if built == want:
+        return None
+    return f"The index was built with {built}, but this server uses {want}. Run index_paths with reindex=True."
+
+
+def rebuild_for_model(con: sqlite3.Connection) -> None:
+    """Empty the index and recreate the vector table for the current model (reindex=True after a model change)."""
+    con.executescript(f"""
+        DELETE FROM chunks; DELETE FROM chunks_fts; DELETE FROM files;
+        DROP TABLE chunks_vec;
+        CREATE VIRTUAL TABLE chunks_vec USING vec0(embedding float[{DIM}]);
+    """)
+    con.execute("UPDATE meta SET value=? WHERE key='model'", (f"{MODEL_NAME} ({DIM})",))
+    con.commit()
 
 
 # ---------- chunking ----------
@@ -182,7 +212,10 @@ def drop_file(con: sqlite3.Connection, file_id: int) -> None:
 
 def index_file(con: sqlite3.Connection, p: Path, force: bool) -> str:
     key = str(p)
-    st = p.stat()
+    try:
+        st = p.stat()
+    except FileNotFoundError:  # deleted between the folder walk and now (editor temp files)
+        return "vanished"
     row = con.execute("SELECT id, mtime, hash FROM files WHERE path=?", (key,)).fetchone()
     if row and not force and abs(row[1] - st.st_mtime) < 1e-6:
         return "unchanged"
@@ -216,12 +249,20 @@ def index_file(con: sqlite3.Connection, p: Path, force: bool) -> str:
 
 
 def sync_source(con: sqlite3.Connection, root: Path, force: bool) -> dict:
+    """Index new and changed files under `root` and drop deleted ones. Commits per file, so
+    a failure keeps the files done so far and other writers (the hook) never wait long."""
     stats = {"added": 0, "updated": 0, "unchanged": 0, "skipped": 0, "removed": 0}
     seen: set[str] = set()
     try:
         for p in iter_files(root):
+            result = index_file(con, p, force)
+            if result == "vanished":
+                continue  # not seen, so the removal pass drops any old copy
             seen.add(str(p))
-            stats[index_file(con, p, force)] += 1
+            stats[result] += 1
+            con.commit()
+            if result in ("added", "updated") and (stats["added"] + stats["updated"]) % 50 == 0:
+                log(f"vault-index: {stats['added'] + stats['updated']} files embedded so far in {root}")
         for fid, path in files_under(con, str(root)):
             if path not in seen:
                 drop_file(con, fid)
@@ -263,21 +304,29 @@ def index_paths(paths: list[str] | None = None, reindex: bool = False) -> str:
     """Add folders/files to the index (remembered as sources) and sync them.
 
     With no `paths`, re-syncs every registered source (picks up new, changed and
-    deleted files). `reindex=True` forces re-embedding of everything.
+    deleted files). `reindex=True` forces re-embedding of everything (needed after a model change).
+    A registered source that is missing on disk keeps its index until remove_source.
     """
     con = db()
-    for raw in paths or []:
-        p = Path(raw).expanduser().resolve()
-        if not p.exists():
-            return f"Path does not exist: {p}"
+    if reindex and model_mismatch(con):
+        rebuild_for_model(con)
+    elif problem := model_mismatch(con):
+        return problem
+    resolved = [Path(raw).expanduser().resolve() for raw in paths or []]
+    missing = [str(p) for p in resolved if not p.exists()]
+    if missing:  # check all before writing anything
+        return "Path does not exist: " + ", ".join(missing)
+    for p in resolved:
         con.execute("INSERT OR IGNORE INTO sources(path) VALUES(?)", (str(p),))
     con.commit()
     sources = [r[0] for r in con.execute("SELECT path FROM sources ORDER BY path")]
     if not sources:
         return "No sources registered. Call index_paths with one or more paths."
-    targets = [str(Path(x).expanduser().resolve()) for x in paths] if paths else sources
     lines = []
-    for s in targets:
+    for s in [str(p) for p in resolved] or sources:
+        if not Path(s).exists():  # e.g. an unplugged drive: dropping its index would force a full re-embed later
+            lines.append(f"{s}: missing on disk; index kept (remove_source drops it)")
+            continue
         lines.append(f"{s}: {sync_source(con, Path(s), reindex)}")
     return "\n".join(lines)
 
@@ -348,10 +397,13 @@ def prefix_chunk_ids(con: sqlite3.Connection, path_prefix: str) -> list[int]:
 def search_notes(query: str, limit: int = 8, path_prefix: str | None = None) -> str:
     """Hybrid search (keyword + semantic, merged with reciprocal rank fusion).
 
-    Returns the best-matching chunks with file path and heading. Optionally restrict
-    to files whose path starts with `path_prefix`.
+    Returns the best-matching chunks with file path and heading. `path_prefix` restricts
+    the search to files under it: an absolute path, or one relative to a source such as
+    "docs/lessons.md" (either slash, any case).
     """
     limit = max(1, min(limit, 25))
+    if problem := model_mismatch(db()):
+        return problem
     results = []
     for i, (path, heading, text, score) in enumerate(hybrid_search(query, limit, path_prefix), 1):
         snippet = text if len(text) <= 700 else text[:700] + "..."
@@ -366,6 +418,8 @@ def get_note(path: str) -> str:
     row = db().execute("SELECT 1 FROM files WHERE path=?", (str(p),)).fetchone()
     if not row:
         return f"Not in index: {p}. Only indexed files can be read with this tool."
+    if not p.is_file():
+        return f"{p} is indexed but no longer on disk. Run index_paths to sync."
     return p.read_text(encoding="utf-8")
 
 
@@ -373,11 +427,13 @@ def get_note(path: str) -> str:
 def list_sources() -> str:
     """List registered source paths with file and chunk counts."""
     con = db()
+    counts = con.execute(
+        "SELECT f.path, COUNT(c.id) FROM files f LEFT JOIN chunks c ON c.file_id=f.id GROUP BY f.id").fetchall()
     out = []
     for (s,) in con.execute("SELECT path FROM sources ORDER BY path").fetchall():
-        ids = [fid for fid, _ in files_under(con, s)]
-        nc = sum(con.execute("SELECT COUNT(*) FROM chunks WHERE file_id=?", (fid,)).fetchone()[0] for fid in ids)
-        out.append(f"{s}: {len(ids)} files, {nc} chunks")
+        prefix = s.rstrip("\\/")
+        mine = [n for path, n in counts if path == prefix or path.startswith(prefix + os.sep)]
+        out.append(f"{s}: {len(mine)} files, {sum(mine)} chunks")
     return "\n".join(out) or "No sources registered."
 
 
@@ -394,9 +450,48 @@ def remove_source(path: str) -> str:
     return f"Removed {s} ({len(ids)} files dropped from index)."
 
 
-def main() -> None:
-    """Console entry point (`uvx vault-index`): serve over stdio."""
-    mcp.run()
+def version() -> str:
+    try:
+        from importlib.metadata import version as dist_version
+
+        return dist_version("vault-index")
+    except Exception:  # running from a source checkout, not an installed package
+        return "source"
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Console entry point (`uvx vault-index`). No command serves MCP over stdio."""
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        prog="vault-index",
+        description="Local hybrid (FTS5 + sqlite-vec) search over markdown and code. "
+                    "With no command, serves MCP over stdio for Claude Code and other MCP clients.",
+        epilog=f"Index: {DB_PATH} (VAULT_INDEX_DB). Model cache: {MODEL_CACHE} (VAULT_MODEL_CACHE).",
+    )
+    ap.add_argument("--version", action="version", version=f"vault-index {version()}")
+    sub = ap.add_subparsers(dest="cmd")
+    ix = sub.add_parser("index", help="index folders or files (remembered as sources); no paths re-syncs all")
+    ix.add_argument("paths", nargs="*")
+    ix.add_argument("--reindex", action="store_true", help="re-embed everything (needed after a model change)")
+    se = sub.add_parser("search", help="search the index from the terminal")
+    se.add_argument("query")
+    se.add_argument("-n", "--limit", type=int, default=8)
+    se.add_argument("--path-prefix", help="only files under this path (absolute or relative to a source)")
+    sub.add_parser("sources", help="list sources with file and chunk counts")
+    sub.add_parser("serve", help="serve MCP over stdio (the default)")
+    args = ap.parse_args(argv)
+
+    if args.cmd == "index":
+        print(index_paths(args.paths or None, args.reindex))
+    elif args.cmd == "search":
+        print(search_notes(args.query, args.limit, args.path_prefix))
+    elif args.cmd == "sources":
+        print(list_sources())
+    else:
+        if sys.stdin.isatty():
+            log("vault-index: serving MCP over stdio (start it from an MCP client; see vault-index --help)")
+        mcp.run()
 
 
 if __name__ == "__main__":

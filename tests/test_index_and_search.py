@@ -149,3 +149,62 @@ def test_reindex_hook_works_for_a_vault_under_a_skip_dir_name(index, tmp_path, m
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"tool_input": {"file_path": str(note)}})))
     reindex_hook.main()
     assert "basil" in index.hybrid_search("basil", 1)[0][2]
+
+
+def test_file_vanishing_mid_sync_keeps_the_rest(index, vault, monkeypatch):
+    real_stat = Path.stat
+
+    def flaky_stat(self, *a, **k):
+        if self.name == "bikes.md":
+            raise FileNotFoundError(self)
+        return real_stat(self, *a, **k)
+
+    monkeypatch.setattr(Path, "stat", flaky_stat)
+    out = index.index_paths([str(vault)])
+    assert "'added': 2" in out
+    assert Path(index.hybrid_search("tomatoes water", 1)[0][0]).name in ("garden.md", "app.py")
+
+
+def test_bad_path_registers_nothing(index, vault):
+    out = index.index_paths([str(vault), str(vault / "typo")])
+    assert out.startswith("Path does not exist") and "typo" in out
+    index.db().commit()
+    assert index.list_sources() == "No sources registered."
+
+
+def test_missing_source_keeps_its_index(index, tmp_path):
+    src = tmp_path / "drive"
+    src.mkdir()
+    (src / "n.md").write_text("# N\n\nbasil on the balcony\n", encoding="utf-8")
+    index.index_paths([str(src)])
+    src.rename(tmp_path / "unplugged")
+    assert "missing on disk" in index.index_paths()
+    assert "1 files" in index.list_sources()
+
+
+def test_model_change_is_reported_and_reindex_rebuilds(index, vault, monkeypatch):
+    index.index_paths([str(vault)])
+    monkeypatch.setattr(index, "MODEL_NAME", "other/model")
+    assert "Run index_paths with reindex=True" in index.search_notes("tomatoes")
+    assert "reindex=True" in index.index_paths()
+    assert "'added': 3" in index.index_paths(reindex=True)
+    assert "garden.md" in index.search_notes("tomatoes water")
+
+
+def test_get_note_on_a_deleted_file_explains(index, vault):
+    index.index_paths([str(vault)])
+    (vault / "notes/garden.md").unlink()
+    assert "no longer on disk" in index.get_note(str(vault / "notes/garden.md"))
+
+
+def test_cli_help_version_index_and_search(index, vault, capsys):
+    with pytest.raises(SystemExit):
+        index.main(["--help"])
+    assert "serves MCP over stdio" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        index.main(["--version"])
+    assert capsys.readouterr().out.startswith("vault-index ")
+    index.main(["index", str(vault)])
+    assert "'added': 3" in capsys.readouterr().out
+    index.main(["search", "tomatoes water", "-n", "1"])
+    assert "garden.md" in capsys.readouterr().out
