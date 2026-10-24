@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 (2026-10-24)
 - Search still answers, in fusion order, when the reranker cannot load (for example offline before its first download).
 - `vault-index index` and `scripts/setup.py` download the reranker up front, so the first search does not.
 - `VAULT_RERANK` listed in `--help` and the module docstring; `search_notes` says it reranks.
