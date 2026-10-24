@@ -1,6 +1,9 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## Unreleased
+- README: `vault-index` CLI in the quickstart.
+
+## 0.3.0 (2026-10-24)
 - `vault-index` CLI: `--help`, `--version`, `index PATH...` (progress on stderr), `search QUERY`, `sources`. No command still serves MCP.
 - Indexing commits per file and skips files that vanish mid-sync, so one deleted temp file no longer rolls back a whole run, and the hook no longer waits on a long write lock.
 - `index_paths` checks every path before registering any; a source missing on disk (an unplugged drive) keeps its index.

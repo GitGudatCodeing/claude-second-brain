@@ -105,7 +105,18 @@ On Windows, Claude Code runs hooks through Git Bash; the hook commands already u
 claude mcp add vault-index -- uvx --python 3.12 vault-index
 ```
 
-Then ask Claude to index a folder (for example "index_paths ~/notes") and search it with `search_notes`. The index lives in `~/.mcp-memory/vault-index.db`. To move it, set `VAULT_INDEX_DB` in your shell environment rather than only in the MCP config, so the server, the re-index hook and the invariants all use the same file. `--python 3.12` keeps uvx off newer Pythons that the embedding runtime does not support yet.
+Then ask Claude to index a folder (for example "index_paths ~/notes") and search it with `search_notes`.
+
+It also works from a terminal. Indexing a large vault there first shows progress and keeps Claude's first tool call short:
+
+```bash
+uvx --python 3.12 vault-index index ~/notes        # no paths re-syncs every source
+uvx --python 3.12 vault-index search "your question" -n 5
+uvx --python 3.12 vault-index sources
+uvx --python 3.12 vault-index --help
+```
+
+With no command it serves MCP over stdio. The index lives in `~/.mcp-memory/vault-index.db`. To move it, set `VAULT_INDEX_DB` in your shell environment rather than only in the MCP config, so the server, the re-index hook and the invariants all use the same file. `--python 3.12` keeps uvx off newer Pythons that the embedding runtime does not support yet.
 
 ## Retrieval eval
 `example-vault/` is a fictional person's notes, decisions and lessons. `eval/golden.jsonl` has 44 questions about it and about this repo's own docs, worded differently from the notes on purpose, so keyword overlap alone does not find most answers. The last 12 are hard paraphrases that share almost no words with their answer. (Keep golden questions out of indexed files like this README, or they compete with the real answers.)
@@ -119,7 +130,7 @@ VAULT_INDEX_DB=/tmp/csb-eval.db uv run --project mcp python eval/run_eval.py --m
 | hybrid (what `search_notes` serves) | 0.699 | 0.739 | 0.765 |
 | keyword only (FTS5) | 0.494 | 0.544 | 0.576 |
 | vector only | 0.717 | 0.739 | 0.811 |
-| naive grep, no index (baseline) | 0.324 | 0.353 | 0.420 |
+| naive grep, no index (baseline) | 0.323 | 0.350 | 0.420 |
 
 The grep row ranks chunks by how many query words they contain, roughly what searching with `rg` per word gives you.
 
