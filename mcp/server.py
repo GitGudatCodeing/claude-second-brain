@@ -4,6 +4,7 @@ Embeddings come from fastembed (ONNX, CPU). Everything lives in one SQLite file.
 Env:
   VAULT_INDEX_DB     path to the SQLite file (default ~/.mcp-memory/vault-index.db)
   VAULT_MODEL_CACHE  fastembed model cache dir (default ~/.mcp-memory/models)
+  VAULT_RERANK       0 turns off the cross-encoder rerank of the top results (default 1)
 """
 from __future__ import annotations
 
@@ -403,9 +404,14 @@ def hybrid_search(
         ).fetchone()
         results.append((path, heading, text, score))
     if rerank and results:
-        scores = list(reranker().rerank(query, [f"{h}\n{t}" if h else t for _, h, t, _ in results]))
-        order = sorted(range(len(results)), key=lambda i: -scores[i])
-        results = [(*results[i][:3], float(scores[i])) for i in order]
+        try:
+            model = reranker()
+        except RuntimeError as e:  # e.g. offline before the reranker was ever downloaded: serve fusion order
+            log(f"vault-index: rerank skipped: {e}")
+        else:
+            scores = list(model.rerank(query, [f"{h}\n{t}" if h else t for _, h, t, _ in results]))
+            order = sorted(range(len(results)), key=lambda i: -scores[i])
+            results = [(*results[i][:3], float(scores[i])) for i in order]
     return results[:final]
 
 
@@ -427,9 +433,10 @@ def prefix_chunk_ids(con: sqlite3.Connection, path_prefix: str) -> list[int]:
 
 @mcp.tool()
 def search_notes(query: str, limit: int = 8, path_prefix: str | None = None) -> str:
-    """Hybrid search (keyword + semantic, merged with reciprocal rank fusion).
+    """Hybrid search (keyword + semantic, merged with reciprocal rank fusion, then the top
+    results reordered by a cross-encoder).
 
-    Returns the best-matching chunks with file path and heading. `path_prefix` restricts
+    Returns the best-matching chunks with file path, heading and score (higher is better). `path_prefix` restricts
     the search to files under it: an absolute path, or one relative to a source such as
     "docs/lessons.md" (either slash, any case).
     """
@@ -499,7 +506,8 @@ def main(argv: list[str] | None = None) -> None:
         prog="vault-index",
         description="Local hybrid (FTS5 + sqlite-vec) search over markdown and code. "
                     "With no command, serves MCP over stdio for Claude Code and other MCP clients.",
-        epilog=f"Index: {DB_PATH} (VAULT_INDEX_DB). Model cache: {MODEL_CACHE} (VAULT_MODEL_CACHE).",
+        epilog=f"Index: {DB_PATH} (VAULT_INDEX_DB). Model cache: {MODEL_CACHE} (VAULT_MODEL_CACHE). "
+               "VAULT_RERANK=0 turns off the rerank.",
     )
     ap.add_argument("--version", action="version", version=f"vault-index {version()}")
     sub = ap.add_subparsers(dest="cmd")
@@ -516,6 +524,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.cmd == "index":
         print(index_paths(args.paths or None, args.reindex))
+        if RERANK:  # download it now, not inside the first search
+            reranker()
     elif args.cmd == "search":
         print(search_notes(args.query, args.limit, args.path_prefix))
     elif args.cmd == "sources":

@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v10.2.0  # no floating major tags after v7; pin an exact release
+      - uses: astral-sh/setup-uv@v10.3.1  # no floating major tags after v7; pin an exact release
         with:
           python-version: ${{ matrix.python }}
 

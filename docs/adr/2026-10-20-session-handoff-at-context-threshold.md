@@ -26,3 +26,6 @@ Build our own: a UserPromptSubmit hook (`scripts/context_guard.py`) reads the tr
 
 ## Update (2026-10-23): hard limit only
 The soft notice was dropped at the user's request: a reminder at 300k interrupted work and added nothing. The guard is now silent until the hard limit (450k), then requires the handoff note and a session card. `handoff.json` holds only `hard_tokens`.
+
+## Update (2026-10-24): hard limit 350k
+Measured 22 sessions since 2026-10-21 (`scripts/session_sizes.py`). The 450k limit fired twice and overshot by under 40k; all 8 handoff notes were picked up. 41% of context tokens were spent in turns above 300k, 26% above 350k. Lowered to 350k: about one more handoff per 10 sessions, and those turns restart at about 70-100k. The longest session had drifted to an unrelated task, so splitting sessions by task matters more than the limit. Re-measure on 2026-11-07 and keep 350k only if handoffs stay rare and are picked up.

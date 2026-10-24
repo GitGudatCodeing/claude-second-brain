@@ -222,3 +222,13 @@ def test_rerank_reorders_the_fused_candidates(index, vault, monkeypatch):
     top = index.hybrid_search("tomatoes water bikes", 1)
     assert Path(top[0][0]).name == "bikes.md" and top[0][3] == 1.0
     assert Path(index.hybrid_search("tomatoes water bikes", 1, mode="fused")[0][0]).name == "garden.md"
+
+
+def test_search_falls_back_to_fusion_when_the_reranker_cannot_load(index, vault, monkeypatch):
+    def offline():
+        raise RuntimeError("Could not load model (offline)")
+
+    index.index_paths([str(vault)])
+    monkeypatch.setattr(index, "RERANK", True)
+    monkeypatch.setattr(index, "reranker", offline)
+    assert index.hybrid_search("tomatoes water bikes", 2) == index.hybrid_search("tomatoes water bikes", 2, mode="fused")

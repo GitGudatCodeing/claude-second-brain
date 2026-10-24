@@ -129,11 +129,11 @@ VAULT_INDEX_DB=/tmp/csb-eval.db uv run --project mcp python eval/run_eval.py --m
 
 | Mode | NDCG@5 | MRR | Recall@5 |
 |---|---|---|---|
-| hybrid + rerank (what `search_notes` serves) | 0.751 | 0.805 | 0.792 |
-| hybrid, fusion only (no rerank) | 0.689 | 0.724 | 0.765 |
+| hybrid + rerank (what `search_notes` serves) | 0.747 | 0.797 | 0.780 |
+| hybrid, fusion only (no rerank) | 0.686 | 0.724 | 0.758 |
 | keyword only (FTS5) | 0.491 | 0.544 | 0.576 |
-| vector only | 0.710 | 0.734 | 0.799 |
-| naive grep, no index (baseline) | 0.312 | 0.341 | 0.398 |
+| vector only | 0.697 | 0.729 | 0.758 |
+| naive grep, no index (baseline) | 0.305 | 0.341 | 0.375 |
 
 The grep row ranks chunks by how many query words they contain, roughly what searching with `rg` per word gives you.
 
@@ -157,7 +157,7 @@ Each change tested alone against a saved baseline, mostly on the author's privat
 
 | Change | Effect on NDCG@5 | Kept |
 |---|---|---|
-| Cross-encoder rerank of the top 10 (MiniLM-L6, 80 MB) | sample +0.051, private +0.063 | yes: about 200 ms per search |
+| Cross-encoder rerank of the top 10 (MiniLM-L6, 80 MB) | sample +0.061, private +0.063 | yes: about 200 ms per search |
 | Larger rerankers (MiniLM-L12, Jina v1 tiny/turbo, bge-reranker-base) | mixed: some lost on the sample set | no |
 | Keyword weight 0.1 in the fusion (was 1.0) | private +0.037, sample +0.066 | yes |
 | Exclude tooling code (`.indexignore`) | +0.063 | yes |

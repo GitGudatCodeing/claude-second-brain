@@ -5,7 +5,7 @@
 1. Checks that uv and npx are on PATH (npx runs the memory graph server).
 2. Writes .mcp.json from .mcp.json.example with an absolute memory file path
    (default ~/.mcp-memory/memory.jsonl). Keeps an existing .mcp.json unless --force.
-3. Indexes this folder (the first run downloads the embedding model, about 65 MB).
+3. Indexes this folder (the first run downloads the embedding and rerank models, about 65 MB and 80 MB).
 4. Runs the invariants and prints what to do next.
 """
 from __future__ import annotations
@@ -50,11 +50,13 @@ def main() -> int:
         cfg_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
         print(f"  memory graph file: {mem}")
 
-    step("Indexing this folder (first run downloads the embedding model)")
+    step("Indexing this folder (first run downloads the models)")
     sys.path.insert(0, str(ROOT / "mcp"))
     import server
 
     print("  " + server.index_paths([str(ROOT)]))
+    if server.RERANK:
+        server.reranker()  # download it now, not inside the first search
 
     step("Checking the wiring")
     code = subprocess.run([sys.executable, str(ROOT / "scripts" / "invariants.py")], check=False).returncode

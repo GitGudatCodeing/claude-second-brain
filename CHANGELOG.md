@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- Search still answers, in fusion order, when the reranker cannot load (for example offline before its first download).
+- `vault-index index` and `scripts/setup.py` download the reranker up front, so the first search does not.
+- `VAULT_RERANK` listed in `--help` and the module docstring; `search_notes` says it reranks.
+- Dependabot skips mcp 2.x (FastMCP was renamed; migrating is its own change). setup-uv 10.3.1.
+
 ## 0.4.0 (2026-10-24)
 - Search reranks the top 10 fused results with a cross-encoder (`ms-marco-MiniLM-L-6-v2`, 80 MB): NDCG@5 sample 0.699 to 0.750, private 0.487 to 0.550. About 200 ms per search; `VAULT_RERANK=0` turns it off. ADR `2026-10-24-cross-encoder-rerank.md` has the model comparison.
 - Both ONNX models run with at most 8 threads (half the CPUs): two full-size thread pools made each search 2.5x slower and indexing slower too.

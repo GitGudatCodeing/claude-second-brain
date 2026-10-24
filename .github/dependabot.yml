@@ -8,3 +8,6 @@ updates:
     directory: /mcp
     schedule:
       interval: monthly
+    ignore:  # mcp 2.x renamed FastMCP; migrating is its own change, CI fails on it
+      - dependency-name: mcp
+        update-types: ["version-update:semver-major"]
