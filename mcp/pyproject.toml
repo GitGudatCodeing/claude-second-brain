@@ -12,7 +12,7 @@ classifiers = [
     "Topic :: Text Processing :: Indexing",
 ]
 dependencies = [
-    "mcp>=1.2,<2",
+    "mcp>=1.2,<3",
     "sqlite-vec>=0.1.6",
     "fastembed>=0.4",
 ]
