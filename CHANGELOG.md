@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 (unreleased)
+## 0.4.0 (2026-10-24)
 - Search reranks the top 10 fused results with a cross-encoder (`ms-marco-MiniLM-L-6-v2`, 80 MB): NDCG@5 sample 0.699 to 0.750, private 0.487 to 0.550. About 200 ms per search; `VAULT_RERANK=0` turns it off. ADR `2026-10-24-cross-encoder-rerank.md` has the model comparison.
 - Both ONNX models run with at most 8 threads (half the CPUs): two full-size thread pools made each search 2.5x slower and indexing slower too.
 - `run_eval.py --modes all` adds `fused` (fusion without rerank). Baselines re-saved.

@@ -92,3 +92,15 @@ Written by `scripts/learn.py` (use `/learn`). Never delete entries; supersede or
 **Cause:** Smoke test of the built wheel: 'uvx --from dist/*.whl vault-index' resolved for cp315 and failed on onnxruntime, although requires-python is <3.14.
 **Detect:** A uvx or uv tool command for vault-index or fastembed that has no --python flag, or an error 'no wheels with a matching Python ABI tag' for onnxruntime.
 **Tags:** vault-index, packaging, uv
+
+## L-0034 · 2026-10-24 · active
+**Lesson:** After a PyPI release, wait until the JSON simple index (Accept: application/vnd.pypi.simple.v1+json) lists the new file before testing with uvx; until then uvx reports 'no version' even with a fresh cache.
+**Cause:** v0.3.0 and v0.4.0 smoke tests failed for minutes after a successful publish: the version JSON and the HTML index had the file, but uv's JSON index flavour was still cached.
+**Detect:** uvx says 'there is no version of <pkg>==X' right after a release job succeeded.
+**Tags:** pypi, uv, release
+
+## L-0035 · 2026-10-24 · active
+**Lesson:** When one process runs two ONNX models (fastembed embedder and reranker), cap each session's threads (threads=min(8, cpus/2)); default per-core pools contend and slow both.
+**Cause:** Interleaved embed + rerank took 510 ms per search on 24 cores against 170 ms for the reranker alone; capping both at 8 threads gave 190 ms and faster indexing.
+**Detect:** A model step that is fast in a tight loop but several times slower when interleaved with another model in the same process.
+**Tags:** vault-index, performance, onnx
