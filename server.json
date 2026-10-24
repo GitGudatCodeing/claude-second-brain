@@ -6,12 +6,12 @@
     "url": "https://github.com/GitGudatCodeing/claude-second-brain",
     "source": "github"
   },
-  "version": "0.3.0",
+  "version": "0.4.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "vault-index",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
@@ -20,6 +20,11 @@
         {
           "name": "VAULT_INDEX_DB",
           "description": "Path to the SQLite index file (default ~/.mcp-memory/vault-index.db)",
+          "isRequired": false
+        },
+        {
+          "name": "VAULT_RERANK",
+          "description": "Set to 0 to turn off the cross-encoder rerank of the top 10 results",
           "isRequired": false
         },
         {

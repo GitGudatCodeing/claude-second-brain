@@ -36,7 +36,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/models
-          key: fastembed-bge-small-en-v1.5-${{ runner.os }}
+          key: fastembed-bge-small-minilm-rerank-${{ runner.os }}
 
       - name: One-command setup (what a new user runs)
         run: uv run --project mcp python scripts/setup.py --memory-file "$RUNNER_TEMP/memory.jsonl"

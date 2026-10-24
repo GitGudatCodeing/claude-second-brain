@@ -4,7 +4,7 @@ Scores exactly what search_notes serves: server.hybrid_search with the tool's
 default limit (so the fusion depth matches production), cut at K for metrics.
 
   uv run --project mcp python eval/run_eval.py                 hybrid vs baseline
-  uv run --project mcp python eval/run_eval.py --modes all     also fts-only, vec-only and a no-index grep baseline
+  uv run --project mcp python eval/run_eval.py --modes all     also fused (no rerank), fts, vec and a grep baseline
   uv run --project mcp python eval/run_eval.py -v              per-question detail
   uv run --project mcp python eval/run_eval.py --save-baseline record current hybrid scores
 
@@ -106,7 +106,7 @@ def run(mode: str, golden: list[dict], verbose: bool) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--modes", default="hybrid", help="hybrid, or 'all' for hybrid, fts, vec and the grep baseline")
+    ap.add_argument("--modes", default="hybrid", help="hybrid, or 'all' (adds fused, fts, vec, grep)")
     ap.add_argument("--save-baseline", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--model", help="evaluate another fastembed model in a separate scratch index "
@@ -127,7 +127,7 @@ def main() -> int:
         fresh = not server.db().execute("SELECT 1 FROM sources").fetchone()  # e.g. a new clone or CI
         print(f"syncing index: {server.index_paths([str(ROOT)] if fresh else None)}")
     golden = load_golden()
-    modes = ["hybrid", "fts", "vec", "grep"] if args.modes == "all" else ["hybrid"]
+    modes = ["hybrid", "fused", "fts", "vec", "grep"] if args.modes == "all" else ["hybrid"]
     scores = {}
     for mode in modes:
         if args.verbose:

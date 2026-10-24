@@ -7,7 +7,7 @@
 
 A local, private long-term memory for [Claude Code](https://claude.com/claude-code). Your markdown notes stay the record. Claude searches them through a hybrid keyword + vector index, writes decisions and lessons back as plain files, and hooks keep the index, the knowledge graph and long sessions in check.
 
-Everything runs on your machine: one SQLite file, a CPU embedding model, no cloud services.
+Everything runs on your machine: one SQLite file, two small CPU models, no cloud services.
 
 ![Demo: session-start check, hybrid search, /recall answering from the sample vault with sources, and the eval](docs/demo.gif)
 
@@ -63,12 +63,14 @@ flowchart LR
     q --> emb["embed with<br/>bge-small-en-v1.5"] --> vec["sqlite-vec kNN<br/>top 4 x limit"]
     fts --> rrf["reciprocal rank fusion<br/>k = 60, keyword weight 0.1"]
     vec --> rrf
-    rrf --> out["top chunks with<br/>file path and heading path"]
+    rrf --> rr["cross-encoder rerank<br/>top 10, MiniLM-L6"]
+    rr --> out["top chunks with<br/>file path and heading path"]
 ```
 
 - Markdown is chunked by heading (up to about 1,200 characters), so every hit carries a path like `Recipe box data model > Units`.
 - Indexing is incremental: unchanged files are skipped by mtime and content hash; deleted files are dropped on the next sync.
 - Keyword ranks count at a tenth of vector ranks: they break ties and lift exact terms (ids, tool names) without outvoting meaning.
+- A small cross-encoder (`ms-marco-MiniLM-L-6-v2`, 80 MB) then reorders the top 10 by reading query and chunk together. It adds about 200 ms per search on CPU; `VAULT_RERANK=0` turns it off.
 - A per-folder `.indexignore` keeps tooling code out of results.
 
 MCP tools: `index_paths`, `search_notes`, `get_note`, `list_sources`, `remove_source`.
@@ -127,21 +129,22 @@ VAULT_INDEX_DB=/tmp/csb-eval.db uv run --project mcp python eval/run_eval.py --m
 
 | Mode | NDCG@5 | MRR | Recall@5 |
 |---|---|---|---|
-| hybrid (what `search_notes` serves) | 0.699 | 0.739 | 0.765 |
-| keyword only (FTS5) | 0.494 | 0.544 | 0.576 |
-| vector only | 0.717 | 0.739 | 0.811 |
-| naive grep, no index (baseline) | 0.323 | 0.350 | 0.420 |
+| hybrid + rerank (what `search_notes` serves) | 0.751 | 0.805 | 0.792 |
+| hybrid, fusion only (no rerank) | 0.689 | 0.724 | 0.765 |
+| keyword only (FTS5) | 0.491 | 0.544 | 0.576 |
+| vector only | 0.710 | 0.734 | 0.799 |
+| naive grep, no index (baseline) | 0.312 | 0.341 | 0.398 |
 
 The grep row ranks chunks by how many query words they contain, roughly what searching with `rg` per word gives you.
 
-On the sample vault, vector-only edges out hybrid: the hard paraphrases give keywords nothing to match. On the author's private vault (41 questions) hybrid wins clearly: hybrid 0.542, vector 0.490, keyword 0.448, grep 0.339. Real notes are full of names and jargon, so hybrid stays the default.
+Without the reranker, vector-only edged out fusion on the sample vault (the hard paraphrases give keywords nothing to match); the reranker puts hybrid back on top. On the author's private vault (41 questions) the order is the same: hybrid + rerank 0.550, fusion only 0.487, vector 0.473, keyword 0.433, grep 0.327.
 
 ### Compared with basic-memory
 [basic-memory](https://github.com/basicmachines-co/basic-memory) is a popular markdown memory MCP server with its own hybrid search. `eval/compare_basic_memory.py` runs it (v0.24.1, same bge-small model) on a copy of the same markdown files and scores both on the same 44 questions. basic-memory returns whole notes, so both are scored per file here (vault-index chunks collapsed to their file):
 
 | System (file level) | NDCG@5 | MRR | Recall@5 |
 |---|---|---|---|
-| vault-index hybrid | 0.792 | 0.808 | 0.875 |
+| vault-index hybrid + rerank | 0.829 | 0.858 | 0.886 |
 | basic-memory, default search | 0.619 | 0.611 | 0.750 |
 | basic-memory, vector only | 0.708 | 0.736 | 0.814 |
 
@@ -154,6 +157,8 @@ Each change tested alone against a saved baseline, mostly on the author's privat
 
 | Change | Effect on NDCG@5 | Kept |
 |---|---|---|
+| Cross-encoder rerank of the top 10 (MiniLM-L6, 80 MB) | sample +0.051, private +0.063 | yes: about 200 ms per search |
+| Larger rerankers (MiniLM-L12, Jina v1 tiny/turbo, bge-reranker-base) | mixed: some lost on the sample set | no |
 | Keyword weight 0.1 in the fusion (was 1.0) | private +0.037, sample +0.066 | yes |
 | Exclude tooling code (`.indexignore`) | +0.063 | yes |
 | Drop stopwords from the FTS query | +0.018 | yes |

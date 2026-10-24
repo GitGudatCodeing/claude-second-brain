@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.GitGudatCodeing/vault-index -->
 
-Local hybrid search for markdown vaults and codebases, served as an MCP server. Keyword search (SQLite FTS5) and vector search (sqlite-vec, `bge-small-en-v1.5` on CPU) are merged with reciprocal rank fusion. Everything lives in one SQLite file on your machine; no cloud services.
+Local hybrid search for markdown vaults and codebases, served as an MCP server. Keyword search (SQLite FTS5) and vector search (sqlite-vec, `bge-small-en-v1.5` on CPU) are merged with reciprocal rank fusion, then a small cross-encoder (`ms-marco-MiniLM-L-6-v2`) reorders the top 10. Everything lives in one SQLite file on your machine; no cloud services.
 
 Part of [claude-second-brain](https://github.com/GitGudatCodeing/claude-second-brain), where every search change is measured against golden question sets and compared with naive grep and basic-memory (see its README for the numbers).
 
@@ -12,7 +12,7 @@ Part of [claude-second-brain](https://github.com/GitGudatCodeing/claude-second-b
 claude mcp add vault-index -- uvx --python 3.12 vault-index
 ```
 
-Then ask Claude to index a folder, for example: "index_paths ~/notes". After that, `search_notes` finds paraphrased answers with file path and heading. The first run downloads the embedding model (about 65 MB).
+Then ask Claude to index a folder, for example: "index_paths ~/notes". After that, `search_notes` finds paraphrased answers with file path and heading. The first run downloads the two models (about 65 MB and 80 MB).
 
 ## From a terminal
 ```bash
@@ -35,5 +35,6 @@ Markdown is chunked by heading. A `.indexignore` in a source folder lists relati
 |---|---|
 | `VAULT_INDEX_DB` | `~/.mcp-memory/vault-index.db` |
 | `VAULT_MODEL_CACHE` | `~/.mcp-memory/models` |
+| `VAULT_RERANK` | `1` (set `0` to skip the rerank; about 200 ms faster per search) |
 
 Python 3.10 to 3.13 (`--python 3.12` keeps uvx off newer Pythons that onnxruntime does not support yet). MIT license.

@@ -208,3 +208,17 @@ def test_cli_help_version_index_and_search(index, vault, capsys):
     assert "'added': 3" in capsys.readouterr().out
     index.main(["search", "tomatoes water", "-n", "1"])
     assert "garden.md" in capsys.readouterr().out
+
+
+def test_rerank_reorders_the_fused_candidates(index, vault, monkeypatch):
+    class FakeReranker:  # prefers chunks about bikes, whatever the fusion said
+        def rerank(self, query, docs):
+            return [1.0 if "bike" in d.lower() else 0.0 for d in docs]
+
+    index.index_paths([str(vault)])
+    assert Path(index.hybrid_search("tomatoes water bikes", 1)[0][0]).name == "garden.md"
+    monkeypatch.setattr(index, "RERANK", True)
+    monkeypatch.setattr(index, "reranker", lambda: FakeReranker())
+    top = index.hybrid_search("tomatoes water bikes", 1)
+    assert Path(top[0][0]).name == "bikes.md" and top[0][3] == 1.0
+    assert Path(index.hybrid_search("tomatoes water bikes", 1, mode="fused")[0][0]).name == "garden.md"

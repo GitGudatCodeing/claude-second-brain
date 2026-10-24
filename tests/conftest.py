@@ -36,6 +36,7 @@ def index(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "DB_PATH", tmp_path / "index.db")
     monkeypatch.setattr(server, "_db", None)
     monkeypatch.setattr(server, "embed", fake_embed)
+    monkeypatch.setattr(server, "RERANK", False)  # the real cross-encoder is covered by the eval, not unit tests
     yield server
     if server._db is not None:
         server._db.close()

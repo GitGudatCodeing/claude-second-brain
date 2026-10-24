@@ -20,6 +20,13 @@ from mcp.server.fastmcp import FastMCP
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 DIM = 384
+# Cross-encoder that reorders the top fused candidates (docs/adr/2026-10-24-cross-encoder-rerank.md).
+RERANK_MODEL = "Xenova/ms-marco-MiniLM-L-6-v2"
+RERANK_N = 10
+RERANK = os.environ.get("VAULT_RERANK", "1") != "0"
+# Two ONNX sessions with a thread per core fight each other: interleaved embed + rerank went from
+# about 170 ms to 510 ms on 24 cores. Capping each keeps a search near 190 ms.
+THREADS = max(1, min(8, (os.cpu_count() or 2) // 2))
 HOME = Path.home() / ".mcp-memory"
 DB_PATH = Path(os.environ.get("VAULT_INDEX_DB", HOME / "vault-index.db"))
 MODEL_CACHE = Path(os.environ.get("VAULT_MODEL_CACHE", HOME / "models"))
@@ -38,6 +45,7 @@ CHUNK_CHARS = 1200
 
 mcp = FastMCP("vault-index")
 _embedder = None
+_reranker = None
 _db: sqlite3.Connection | None = None
 
 
@@ -45,20 +53,33 @@ def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
+def load_model(kind, name: str, size: str):
+    MODEL_CACHE.mkdir(parents=True, exist_ok=True)
+    try:
+        return kind(name, cache_dir=str(MODEL_CACHE), threads=THREADS)
+    except Exception as e:
+        raise RuntimeError(
+            f"Could not load model {name} into {MODEL_CACHE}: {e}. "
+            f"The first run downloads it (about {size}) and needs internet; set VAULT_MODEL_CACHE to move it."
+        ) from e
+
+
 def embedder():
     global _embedder
     if _embedder is None:
         from fastembed import TextEmbedding
 
-        MODEL_CACHE.mkdir(parents=True, exist_ok=True)
-        try:
-            _embedder = TextEmbedding(MODEL_NAME, cache_dir=str(MODEL_CACHE))
-        except Exception as e:
-            raise RuntimeError(
-                f"Could not load embedding model {MODEL_NAME} into {MODEL_CACHE}: {e}. "
-                "The first run downloads it (about 65 MB) and needs internet; set VAULT_MODEL_CACHE to move it."
-            ) from e
+        _embedder = load_model(TextEmbedding, MODEL_NAME, "65 MB")
     return _embedder
+
+
+def reranker():
+    global _reranker
+    if _reranker is None:
+        from fastembed.rerank.cross_encoder import TextCrossEncoder
+
+        _reranker = load_model(TextCrossEncoder, RERANK_MODEL, "80 MB")
+    return _reranker
 
 
 def embed(texts: list[str]) -> list[bytes]:
@@ -340,8 +361,15 @@ FTS_WEIGHT = 0.1
 def hybrid_search(
     query: str, limit: int, path_prefix: str | None = None, mode: str = "hybrid"
 ) -> list[tuple[str, str, str, float]]:
-    """Ranked (path, heading, text, score). `mode` is hybrid, fts or vec; the
-    single-sided modes exist so eval/run_eval.py can measure each side's contribution."""
+    """Ranked (path, heading, text, score). `mode` is hybrid (fusion, then the cross-encoder
+    reorders the top max(limit, RERANK_N) unless VAULT_RERANK=0), fused (fusion only), fts or vec;
+    the other modes exist so eval/run_eval.py can measure each stage's contribution."""
+    rerank = mode == "hybrid" and RERANK
+    final = limit
+    if rerank:
+        limit = max(limit, RERANK_N)
+    if mode == "fused":
+        mode = "hybrid"
     con = db()
     pool = limit * 4
     ranks: dict[int, float] = {}
@@ -374,7 +402,11 @@ def hybrid_search(
             "SELECT f.path, c.heading, c.text FROM chunks c JOIN files f ON f.id=c.file_id WHERE c.id=?", (cid,)
         ).fetchone()
         results.append((path, heading, text, score))
-    return results
+    if rerank and results:
+        scores = list(reranker().rerank(query, [f"{h}\n{t}" if h else t for _, h, t, _ in results]))
+        order = sorted(range(len(results)), key=lambda i: -scores[i])
+        results = [(*results[i][:3], float(scores[i])) for i in order]
+    return results[:final]
 
 
 def prefix_chunk_ids(con: sqlite3.Connection, path_prefix: str) -> list[int]:
