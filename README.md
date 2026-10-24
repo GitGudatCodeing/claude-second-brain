@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/GitGudatCodeing/claude-second-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/GitGudatCodeing/claude-second-brain/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%20to%203.13-blue)
+[![PyPI](https://img.shields.io/pypi/v/vault-index)](https://pypi.org/project/vault-index/)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A local, private long-term memory for [Claude Code](https://claude.com/claude-code). Your markdown notes stay the record. Claude searches them through a hybrid keyword + vector index, writes decisions and lessons back as plain files, and hooks keep the index, the knowledge graph and long sessions in check.
@@ -97,6 +98,15 @@ Your own notes go in `notes/`. Delete `example-vault/` when you no longer need t
 
 On Windows, Claude Code runs hooks through Git Bash; the hook commands already use forward slashes.
 
+### Just the search server
+`vault-index` is on [PyPI](https://pypi.org/project/vault-index/) and in the [MCP registry](https://registry.modelcontextprotocol.io). To use the hybrid search on any folder of notes without the rest of this repo:
+
+```bash
+claude mcp add vault-index -- uvx --python 3.12 vault-index
+```
+
+Then ask Claude to index a folder (for example "index_paths ~/notes") and search it with `search_notes`. The index lives in `~/.mcp-memory/vault-index.db` (set `VAULT_INDEX_DB` to change it). `--python 3.12` keeps uvx off newer Pythons that the embedding runtime does not support yet.
+
 ## Retrieval eval
 `example-vault/` is a fictional person's notes, decisions and lessons. `eval/golden.jsonl` has 44 questions about it and about this repo's own docs, worded differently from the notes on purpose, so keyword overlap alone does not find most answers. The last 12 are hard paraphrases that share almost no words with their answer. (Keep golden questions out of indexed files like this README, or they compete with the real answers.)
 
@@ -109,7 +119,7 @@ VAULT_INDEX_DB=/tmp/csb-eval.db uv run --project mcp python eval/run_eval.py --m
 | hybrid (what `search_notes` serves) | 0.697 | 0.739 | 0.758 |
 | keyword only (FTS5) | 0.491 | 0.544 | 0.576 |
 | vector only | 0.715 | 0.739 | 0.803 |
-| naive grep, no index (baseline) | 0.333 | 0.367 | 0.420 |
+| naive grep, no index (baseline) | 0.325 | 0.355 | 0.420 |
 
 The grep row ranks chunks by how many query words they contain, roughly what searching with `rg` per word gives you.
 

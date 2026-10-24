@@ -1,6 +1,9 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## Unreleased
+- README: `uvx vault-index` quickstart and PyPI badge.
+
+## 0.2.0 (2026-10-24)
 - `vault-index` is packaged for PyPI (`uvx vault-index`) and described in `server.json` for the MCP registry. A tag push publishes both (`.github/workflows/release.yml`, trusted publishing, no tokens).
 - `path_prefix` searches rank only chunks under the prefix (they no longer come back short when other folders fill the candidate pool), and accept paths relative to a source and either slash.
 - Indexing embeds before it touches the index and rolls back on errors, so a failed embedding can no longer leave a file marked indexed with no chunks.
