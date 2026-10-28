@@ -381,7 +381,8 @@ def check_skill_listing():
     if content is None:
         return []  # no session since the last settings change; nothing to measure yet
     tokens = len(content) // 4
-    return [] if tokens < SKILL_LISTING_TOKEN_BUDGET else [f"~{tokens} tokens; disable unused plugins in .claude/settings.json"]
+    hint = "disable unused plugins in .claude/settings.json (account-synced plugins: in the app's plugin settings)"
+    return [] if tokens < SKILL_LISTING_TOKEN_BUDGET else [f"~{tokens} tokens; {hint}"]
 
 
 def main() -> int:
