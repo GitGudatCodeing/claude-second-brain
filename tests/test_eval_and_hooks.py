@@ -1,4 +1,5 @@
 import json
+import os
 
 import handoff_common
 import invariants
@@ -109,3 +110,25 @@ def test_hook_check_flags_a_missing_script(tmp_path, monkeypatch):
     assert any("hook path missing" in p for p in invariants.check_hook())
     (tmp_path / "mcp/reindex_hook.py").write_text("", encoding="utf-8")
     assert invariants.check_hook() == []
+
+
+def test_skill_listing_budget_reads_newest_listing_since_settings_change(tmp_path, monkeypatch):
+    def listing(ts, content):
+        return json.dumps({"type": "attachment", "timestamp": ts,
+                           "attachment": {"type": "skill_listing", "content": content}})
+
+    old, new, empty = tmp_path / "old.jsonl", tmp_path / "new.jsonl", tmp_path / "empty.jsonl"
+    old.write_text(listing("2026-10-27T10:00:00Z", "x" * 40), encoding="utf-8")
+    new.write_text("\n".join(['{"broken": ', listing("2026-10-28T10:00:00Z", "small"),
+                              listing("2026-10-28T11:00:00Z", "y" * 400)]), encoding="utf-8")
+    empty.write_text(json.dumps({"type": "user"}), encoding="utf-8")
+    for f, t in ((old, 1), (new, 2), (empty, 3)):
+        os.utime(f, (1_800_000_000 + t,) * 2)
+    since = 1_800_000_000  # all files are newer; listings are dated 2026, before this time
+    assert invariants.latest_skill_listing(tmp_path, since) is None
+    assert invariants.latest_skill_listing(tmp_path, 0) == "y" * 400  # newest file with a listing, last listing
+
+    monkeypatch.setattr(invariants, "TRANSCRIPTS", tmp_path)
+    monkeypatch.setattr(invariants, "latest_skill_listing", lambda d, s: "z" * 4 * invariants.SKILL_LISTING_TOKEN_BUDGET)
+    assert invariants.check_skill_listing() != []
+

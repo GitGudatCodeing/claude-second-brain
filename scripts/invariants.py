@@ -14,6 +14,7 @@ import re
 import shutil
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +39,8 @@ SKIP_DIRS = {
     "dist", "build", ".idea", ".vs", ".next", ".obsidian", ".trash",
 }  # mirrors mcp/server.py SKIP_DIRS; checked by check_index_mirror
 ALWAYS_LOADED_TOKEN_BUDGET = 10_000
+SKILL_LISTING_TOKEN_BUDGET = 5_500  # ~4.5k measured without audit-suite (2026-10-28), plus headroom
+TRANSCRIPTS = HOME / ".claude/projects" / re.sub(r"[:\\/]", "-", str(ROOT))
 
 results: list[tuple[bool, str, str]] = []
 
@@ -346,6 +349,39 @@ def check_budget():
     chars = sum(len(f.read_text(encoding="utf-8")) for f in files if f.exists())
     tokens = chars // 4  # rough estimate for English markdown
     return [] if tokens < ALWAYS_LOADED_TOKEN_BUDGET else [f"~{tokens} tokens"]
+
+
+def latest_skill_listing(transcripts: Path, since: float) -> str | None:
+    """Content of the newest skill_listing written after `since`, from the newest transcript that has one."""
+    for t in sorted(transcripts.glob("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True):
+        if t.stat().st_mtime < since:
+            return None
+        found = None
+        with t.open(encoding="utf-8") as f:
+            for line in f:
+                if '"skill_listing"' not in line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                a = d.get("attachment") or {}
+                ts = datetime.fromisoformat(d.get("timestamp", "1970-01-01T00:00:00Z").replace("Z", "+00:00"))
+                if a.get("type") == "skill_listing" and ts.timestamp() >= since:
+                    found = a.get("content", "")
+        if found is not None:
+            return found
+    return None
+
+
+@check(f"context-budget: skill listing under {SKILL_LISTING_TOKEN_BUDGET} tokens")
+def check_skill_listing():
+    # Sessions started before the last settings change do not reflect it (e.g. a plugin just disabled).
+    content = latest_skill_listing(TRANSCRIPTS, (ROOT / ".claude/settings.json").stat().st_mtime)
+    if content is None:
+        return []  # no session since the last settings change; nothing to measure yet
+    tokens = len(content) // 4
+    return [] if tokens < SKILL_LISTING_TOKEN_BUDGET else [f"~{tokens} tokens; disable unused plugins in .claude/settings.json"]
 
 
 def main() -> int:

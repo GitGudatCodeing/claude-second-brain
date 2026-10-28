@@ -1,4 +1,7 @@
 {
+  "enabledPlugins": {
+    "audit-suite@anthropic-plugin-directory": false
+  },
   "hooks": {
     "SessionStart": [
       {
