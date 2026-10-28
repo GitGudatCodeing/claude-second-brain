@@ -45,6 +45,18 @@ def test_context_tokens_reads_latest_usage_and_survives_partial_lines(tmp_path):
     assert handoff_common.context_tokens(handoff_common.read_entries(t)) == 215
 
 
+def test_session_sizes_counts_each_api_call_once(tmp_path):
+    import session_sizes
+
+    def call(mid, tokens):
+        return json.dumps({"type": "assistant", "timestamp": "2026-10-27T10:00:00Z",
+                           "message": {"id": mid, "usage": {"input_tokens": tokens}}})
+
+    t = tmp_path / "t.jsonl"
+    t.write_text("\n".join([call("a", 100), call("a", 100), call("b", 200), call("b", 200)]), encoding="utf-8")
+    assert session_sizes.session(t) == ("2026-10-27", [100, 200])
+
+
 def test_context_guard_is_silent_below_the_hard_limit_and_fires_above(tmp_path, monkeypatch, capsys):
     import io
 
@@ -59,6 +71,26 @@ def test_context_guard_is_silent_below_the_hard_limit_and_fires_above(tmp_path, 
         assert context_guard.main() == 0
         out = capsys.readouterr().out
         assert ("hard limit" in out) is fires
+
+
+def test_context_guard_fires_once_per_session_mid_turn(tmp_path, monkeypatch, capsys):
+    import io
+
+    import context_guard
+
+    monkeypatch.setattr(context_guard, "load_config", lambda: {"hard": 1000})
+    monkeypatch.setattr(context_guard, "STATE", tmp_path / "state")
+    monkeypatch.setattr("sys.argv", ["context_guard.py"])
+    t = tmp_path / "t.jsonl"
+    t.write_text(json.dumps({"message": {"usage": {"input_tokens": 1500}}}), encoding="utf-8")
+    event = {"transcript_path": str(t), "hook_event_name": "PostToolUse", "session_id": "s1"}
+    outs = []
+    for _ in range(2):
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+        assert context_guard.main() == 0
+        outs.append(capsys.readouterr().out)
+    assert '"hookEventName": "PostToolUse"' in outs[0] and "mid-turn" in outs[0]
+    assert outs[1] == ""
 
 
 def test_abs_paths_expands_project_dir():

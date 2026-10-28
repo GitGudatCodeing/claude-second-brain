@@ -35,6 +35,16 @@
     ],
     "PostToolUse": [
       {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR\"/scripts/context_guard.py",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      },
+      {
         "matcher": "Write|Edit",
         "hooks": [
           {

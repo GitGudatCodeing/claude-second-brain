@@ -52,7 +52,7 @@ flowchart LR
 |---|---|---|
 | SessionStart | `scripts/invariants.py --hook` | 10 checks: MCP servers launchable, graph sources exist, index fresh, hooks wired, golden labels valid, lessons well-formed, context budget. |
 | PostToolUse (Write, Edit) | `mcp/reindex_hook.py` | Re-indexes the edited file if it sits under a registered source. Never blocks. |
-| UserPromptSubmit | `scripts/context_guard.py` | Reads the real context size from the transcript. Silent until 450k tokens (`.claude/handoff.json`), then requires `/handoff`: a note plus a card to start the fresh session. |
+| UserPromptSubmit, PostToolUse (async) | `scripts/context_guard.py` | Reads the real context size from the transcript. Silent until 250k tokens (`.claude/handoff.json`), then requires `/handoff`: a note plus a card to start the fresh session. On every prompt, and once per session mid-turn. |
 | PreCompact | `scripts/precompact_snapshot.py` | Saves recent requests and touched files to `docs/handoffs/auto/` as a fallback before compaction. |
 
 ### Search

@@ -158,7 +158,8 @@ def hook_commands(settings: Path, event: str) -> list[str]:
 def check_handoff():
     out = []
     user_settings, project_settings = HOME / ".claude/settings.json", ROOT / ".claude/settings.json"
-    for event, script in (("UserPromptSubmit", "context_guard.py"), ("PreCompact", "precompact_snapshot.py")):
+    for event, script in (("UserPromptSubmit", "context_guard.py"), ("PostToolUse", "context_guard.py"),
+                          ("PreCompact", "precompact_snapshot.py")):
         in_user = [c for c in hook_commands(user_settings, event) if script in c]
         in_project = [c for c in hook_commands(project_settings, event) if script in c]
         hook = in_user + in_project

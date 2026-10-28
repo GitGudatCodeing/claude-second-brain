@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+- Context guard: hard limit 250k (was 350k), measured on 41 sessions. It also runs as an async PostToolUse hook and fires once per session, so a long autonomous turn hears about the limit mid-turn.
+- `scripts/session_sizes.py` (context size per session, for tuning the limit) is now public and counts each API call once: transcripts write one entry per content block and replay entries on resume, so calls were counted 2-3 times.
+- No change to the `vault-index` package.
+
 ## 0.4.1 (2026-10-24)
 - Search still answers, in fusion order, when the reranker cannot load (for example offline before its first download).
 - `vault-index index` and `scripts/setup.py` download the reranker up front, so the first search does not.

@@ -29,3 +29,9 @@ The soft notice was dropped at the user's request: a reminder at 300k interrupte
 
 ## Update (2026-10-24): hard limit 350k
 Measured 22 sessions since 2026-10-21 (`scripts/session_sizes.py`). The 450k limit fired twice and overshot by under 40k; all 8 handoff notes were picked up. 41% of context tokens were spent in turns above 300k, 26% above 350k. Lowered to 350k: about one more handoff per 10 sessions, and those turns restart at about 70-100k. The longest session had drifted to an unrelated task, so splitting sessions by task matters more than the limit. Re-measure on 2026-11-07 and keep 350k only if handoffs stay rare and are picked up.
+
+## Update (2026-10-27): hard limit 250k, mid-turn check
+- `scripts/session_sizes.py` counted each API call 2-3 times: Claude Code writes one entry per content block, sharing `message.id`, and replays entries on resume (60% of entries were copies). It now counts each `message.id` once. Peaks were right; call counts in the 2026-10-24 update were too high.
+- Re-measured 41 sessions since 2026-10-20: 69% of context tokens are spent in calls above 200k, and re-reading context is 71% of cost. Replaying the sessions with a restart at about 90k: 350k keeps 69% of today's context tokens, 250k keeps 56%, 200k keeps 48%, with about 13, 27 and 48 handoffs across 46 sessions. Chose 250k as the balance between cost and interruptions.
+- Closed the gap noted above: `context_guard.py` also runs as an async PostToolUse hook and fires once per session past the limit, so a long autonomous turn hears about it mid-turn. Pattern from the personal-starter-kit `context_budget.py`, whose author probed that async `additionalContext` reaches the model with a later tool result. Not yet seen live here.
+- Re-measure on 2026-11-07 with the fixed counter. If fresh sessions pick up cleanly, try 200k; if handoff notes lose detail, go back to 300k.
