@@ -132,3 +132,7 @@ def test_skill_listing_budget_reads_newest_listing_since_settings_change(tmp_pat
     monkeypatch.setattr(invariants, "latest_skill_listing", lambda d, s: "z" * 4 * invariants.SKILL_LISTING_TOKEN_BUDGET)
     assert invariants.check_skill_listing() != []
 
+
+def test_handoff_config_defaults_when_the_project_has_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(handoff_common, "CONFIG", tmp_path / ".claude/handoff.json")
+    assert handoff_common.load_config() == {"hard": handoff_common.DEFAULT_HARD}

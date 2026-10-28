@@ -1,0 +1,15 @@
+{
+  "name": "second-brain",
+  "description": "Local, private long-term memory for Claude Code: hybrid search over your markdown notes, decision records and lessons",
+  "owner": {
+    "name": "GitGudatCodeing",
+    "url": "https://github.com/GitGudatCodeing"
+  },
+  "plugins": [
+    {
+      "name": "second-brain",
+      "source": "./plugin",
+      "description": "Commands, hooks and MCP servers for a markdown second brain: /recall, /adr, /learn, /ingest, /handoff"
+    }
+  ]
+}

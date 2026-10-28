@@ -17,7 +17,10 @@ def main() -> None:
             return
         p = Path(raw).resolve()
 
-        import server  # noqa: E402  (heavy import, only after cheap checks)
+        try:  # heavy import, only after cheap checks
+            import server
+        except ImportError:  # run by the plugin with the published package (uvx --from vault-index)
+            import vault_index as server
 
         if p.suffix.lower() not in server.EXTENSIONS or not p.is_file():
             return

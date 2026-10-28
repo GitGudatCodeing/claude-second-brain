@@ -5,7 +5,7 @@ __pycache__/
 .ruff_cache/
 .export-stamp
 # Your own MCP config (absolute paths); start from .mcp.json.example
-.mcp.json
+/.mcp.json
 # Raw pre-compaction snapshots contain your prompts
 docs/handoffs/auto/
 .claude/settings.local.json

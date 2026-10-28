@@ -5,9 +5,11 @@ Usage:
   python scripts/learn.py --supersede L-0003 "<new lesson>" --cause ... --detect ... [--tags ...]
   python scripts/learn.py --retire L-0003 --reason "<why>"
   python scripts/learn.py --list [--all]
+  --root <project> works on another project's docs/lessons.md (the plugin passes the vault).
 
 Standard library only. Adding the same active lesson twice is a no-op.
-After writing, the file is re-indexed through mcp/reindex_hook.py (best effort).
+After writing, the file is re-indexed through mcp/reindex_hook.py, or the vault-index
+command when there is no mcp/ folder (best effort).
 """
 from __future__ import annotations
 
@@ -64,11 +66,13 @@ def set_status(text: str, entry_id: str, status: str) -> str:
 
 def reindex() -> None:
     payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(LESSONS)}})
+    hook = Path(__file__).resolve().parent.parent / "mcp"
+    if (hook / "reindex_hook.py").exists():
+        cmd = ["uv", "run", "--project", str(hook), "python", str(hook / "reindex_hook.py")]
+    else:  # installed as a plugin: use the published server's command line
+        cmd, payload = ["uvx", "--python", "3.12", "vault-index", "index", str(LESSONS)], None
     try:
-        subprocess.run(
-            ["uv", "run", "--project", str(ROOT / "mcp"), "python", str(ROOT / "mcp" / "reindex_hook.py")],
-            input=payload, text=True, timeout=120, capture_output=True,
-        )
+        subprocess.run(cmd, input=payload, text=True, timeout=120, capture_output=True)
     except Exception as e:  # indexing is a convenience; the file is the record
         print(f"note: re-index skipped ({e}); run index_paths later", file=sys.stderr)
 
@@ -103,7 +107,11 @@ def main() -> int:
     ap.add_argument("--reason")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--all", action="store_true", help="with --list, include superseded/retired")
+    ap.add_argument("--root", type=Path, help="project folder (default: this repo)")
     args = ap.parse_args()
+    if args.root:
+        global LESSONS
+        LESSONS = args.root.resolve() / "docs" / "lessons.md"
     today = dt.date.today().isoformat()
     text = load()
 

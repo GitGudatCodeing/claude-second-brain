@@ -85,8 +85,27 @@ MCP tools: `index_paths`, `search_notes`, `get_note`, `list_sources`, `remove_so
 | `/ingest <path>` | Indexes a file or folder and adds its durable entities to the graph. |
 | `/handoff [topic]` | Writes a handoff note and starts a fresh session from it. |
 
+Installed as a plugin, the commands carry its name: `/second-brain:recall`, `/second-brain:adr` and so on.
+
 ## Quickstart
 Needs [uv](https://docs.astral.sh/uv/) (it fetches Python 3.10 to 3.13), Node.js for the memory server, and Claude Code.
+
+### As a plugin
+In the folder that holds your notes:
+
+```bash
+claude plugin marketplace add GitGudatCodeing/claude-second-brain
+claude plugin install second-brain@second-brain --scope project
+```
+
+Start `claude` there, then ask it to index the folder ("index_paths .") and try `/second-brain:recall <topic>`. The plugin brings the five commands, the hooks (re-index on edit, context guard, pre-compact snapshot) and both MCP servers. Decision records go to `docs/adr/`, lessons to `docs/lessons.md`, handoffs to `docs/handoffs/`, and the knowledge graph to `memory.jsonl`, all inside that folder. The search index is shared at `~/.mcp-memory/vault-index.db`.
+
+`--scope project` keeps the plugin to that folder: the context guard would otherwise run in every project. The plugin leaves out the session-start invariants, which check this repo's layout. Change the handoff limit with a `.claude/handoff.json` like [this repo's](.claude/handoff.json) (default 250k tokens).
+
+Use the plugin or the clone below in a folder, not both: each starts its own `vault-index` server.
+
+### From a clone
+The full repo adds the sample vault, the eval and the invariants.
 
 ```bash
 git clone https://github.com/GitGudatCodeing/claude-second-brain.git
@@ -178,6 +197,8 @@ example-vault/  fictional sample notes for the eval
 docs/adr/       decision records for this system
 docs/lessons.md lessons learned while building it
 .claude/        slash commands, hook settings, handoff thresholds
+plugin/         the Claude Code plugin, built from the files above
+.claude-plugin/ marketplace listing the plugin
 ```
 
 ## Development

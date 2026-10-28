@@ -2,16 +2,21 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# The project the hook runs for. As a plugin, this script lives in the plugin cache, not the project.
+ROOT = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path(__file__).resolve().parent.parent)
 CONFIG = ROOT / ".claude/handoff.json"
 HANDOFFS = ROOT / "docs/handoffs"
 AUTO = HANDOFFS / "auto"
+DEFAULT_HARD = 250_000  # used when the project has no .claude/handoff.json
 TAIL_BYTES = 4_000_000  # usage is on every assistant message, so the tail is enough
 
 
 def load_config() -> dict:
+    if not CONFIG.exists():
+        return {"hard": DEFAULT_HARD}
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
     return {"hard": int(cfg["hard_tokens"])}
 

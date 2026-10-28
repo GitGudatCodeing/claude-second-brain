@@ -62,3 +62,9 @@ def test_supersede_with_existing_text_changes_nothing(lessons, monkeypatch, caps
     assert learn.main() == 1
     assert "left unchanged" in capsys.readouterr().out
     assert lessons.read_text(encoding="utf-8") == before
+
+
+def test_root_writes_another_projects_lessons(lessons, monkeypatch, capsys, tmp_path):
+    other = tmp_path / "vault"
+    run(monkeypatch, capsys, "Rule", "--cause", "c", "--detect", "d", "--root", str(other))
+    assert "Rule" in (other / "docs/lessons.md").read_text(encoding="utf-8")

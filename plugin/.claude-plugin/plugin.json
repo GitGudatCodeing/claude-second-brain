@@ -1,0 +1,14 @@
+{
+  "name": "second-brain",
+  "displayName": "Second Brain",
+  "version": "0.5.0",
+  "description": "Local, private long-term memory for Claude Code: hybrid search over your markdown notes, decision records and lessons, a knowledge graph, and session handoffs",
+  "author": {
+    "name": "GitGudatCodeing",
+    "url": "https://github.com/GitGudatCodeing"
+  },
+  "homepage": "https://github.com/GitGudatCodeing/claude-second-brain",
+  "repository": "https://github.com/GitGudatCodeing/claude-second-brain",
+  "license": "MIT",
+  "keywords": ["memory", "notes", "search", "markdown", "obsidian", "mcp"]
+}

@@ -1,0 +1,48 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --python 3.12 python \"${CLAUDE_PLUGIN_ROOT}/scripts/context_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --python 3.12 python \"${CLAUDE_PLUGIN_ROOT}/scripts/precompact_snapshot.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --python 3.12 python \"${CLAUDE_PLUGIN_ROOT}/scripts/context_guard.py\"",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx --python 3.12 --from vault-index python \"${CLAUDE_PLUGIN_ROOT}/hooks/reindex_hook.py\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
