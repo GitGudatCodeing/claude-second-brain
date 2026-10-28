@@ -1,6 +1,6 @@
 [project]
 name = "vault-index"
-version = "0.4.1"
+version = "0.4.2"
 description = "Local hybrid (FTS5 + sqlite-vec) search MCP server for markdown vaults and codebases"
 readme = "README.md"
 license = "MIT"

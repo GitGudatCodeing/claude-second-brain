@@ -4,7 +4,10 @@
 - Claude Code plugin: `claude plugin marketplace add GitGudatCodeing/claude-second-brain`, then `claude plugin install second-brain@second-brain`. Commands, hooks and both MCP servers, with no clone or config. The handoff hooks and `learn.py --root` work on the project they run for.
 - Context guard: hard limit 250k (was 350k), measured on 41 sessions. It also runs as an async PostToolUse hook and fires once per session, so a long autonomous turn hears about the limit mid-turn.
 - `scripts/session_sizes.py` (context size per session, for tuning the limit) is now public and counts each API call once: transcripts write one entry per content block and replay entries on resume, so calls were counted 2-3 times.
-- No change to the `vault-index` package.
+- Invariants: the skill-listing hint says account-synced plugins are turned off in the app's plugin settings.
+
+## 0.4.2 (2026-10-28)
+- Python 3.14 supported (`requires-python` is now `<3.15`), tested in CI on Ubuntu and Windows.
 
 ## 0.4.1 (2026-10-24)
 - Search still answers, in fusion order, when the reranker cannot load (for example offline before its first download).
