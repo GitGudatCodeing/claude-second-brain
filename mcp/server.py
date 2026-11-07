@@ -303,6 +303,24 @@ def files_under(con: sqlite3.Connection, source: str) -> list[tuple[int, str]]:
             if path == prefix or path.startswith(prefix + os.sep)]
 
 
+def is_under(path: str, root: str) -> bool:
+    """True if `path` is strictly inside folder `root`."""
+    return path.startswith(root.rstrip("\\/") + os.sep)
+
+
+def register_source(con: sqlite3.Connection, p: Path) -> None:
+    """Remember `p` as a source unless a registered source already covers it. A source inside another
+    would outlive a rename or delete of its file and show as missing; sources it now covers are dropped
+    from the list (their files stay indexed under `p`)."""
+    sources = [r[0] for r in con.execute("SELECT path FROM sources")]
+    if any(is_under(str(p), s) for s in sources):
+        return
+    for s in sources:
+        if is_under(s, str(p)):
+            con.execute("DELETE FROM sources WHERE path=?", (s,))
+    con.execute("INSERT OR IGNORE INTO sources(path) VALUES(?)", (str(p),))
+
+
 # ---------- search ----------
 
 STOPWORDS = frozenset("""
@@ -339,7 +357,7 @@ def index_paths(paths: list[str] | None = None, reindex: bool = False) -> str:
     if missing:  # check all before writing anything
         return "Path does not exist: " + ", ".join(missing)
     for p in resolved:
-        con.execute("INSERT OR IGNORE INTO sources(path) VALUES(?)", (str(p),))
+        register_source(con, p)
     con.commit()
     sources = [r[0] for r in con.execute("SELECT path FROM sources ORDER BY path")]
     if not sources:
