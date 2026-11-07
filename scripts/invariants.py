@@ -179,6 +179,11 @@ def check_handoff():
     cfg = json.loads((ROOT / ".claude/handoff.json").read_text(encoding="utf-8"))
     if not isinstance(cfg.get("hard_tokens"), int) or cfg["hard_tokens"] <= 0:
         out.append("handoff.json: hard_tokens must be a positive integer")
+    for key in ("idle_min_tokens", "idle_minutes"):
+        if key in cfg and (not isinstance(cfg[key], int) or cfg[key] <= 0):
+            out.append(f"handoff.json: {key} must be a positive integer")
+    if cfg.get("idle_min_tokens", 0) >= cfg.get("hard_tokens", 1):
+        out.append("handoff.json: idle_min_tokens must be below hard_tokens")
     if not any((d / "handoff.md").is_file() for d in (ROOT / ".claude/commands", HOME / ".claude/commands")):
         out.append("handoff.md missing from .claude/commands and ~/.claude/commands (/handoff command)")
     if "docs/handoffs/auto" not in ignores_for(ROOT):

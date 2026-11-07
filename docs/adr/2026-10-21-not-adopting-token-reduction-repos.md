@@ -26,3 +26,4 @@ Adopt none. Keep our own measures: context guard (300k/450k), lesson L-0017 (pag
 - No new dependencies, hooks or licenses to maintain.
 - Revisit context-mode if MCP tool output stays the top token cost; rtk if shell output grows.
 - Any trial: measure with and without on a throwaway session, keep only if it wins.
+- Partly superseded on 2026-11-02: code repos use graphify (`2026-11-02-use-graphify-for-code-repos.md`).
