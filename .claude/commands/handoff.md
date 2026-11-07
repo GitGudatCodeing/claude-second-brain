@@ -8,6 +8,9 @@ Hand off the current work: **$ARGUMENTS** (if empty, name the topic from the con
 
 Global command (user-level). Notes from every project go to the SecondBrain, so `/recall` finds them.
 
+## 0. Review (projects that have one)
+- If the project folder has `.claude/commands/review.md`, follow it first (it runs in subagents, so it costs little context). Findings not fixed now go under Next steps.
+
 ## 1. Gather
 - Source: this conversation. Do not invent; mark anything unsure as an open question.
 - Decisions and lessons already recorded: check this project's ADRs and lessons if it has them (SecondBrain: `docs/adr/`, `docs/lessons.md`).

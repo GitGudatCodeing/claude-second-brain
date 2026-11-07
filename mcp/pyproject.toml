@@ -38,5 +38,8 @@ bypass-selection = true
 [tool.hatch.build.targets.sdist]
 include = ["server.py", "README.md", "pyproject.toml"]
 
+[dependency-groups]
+dev = ["pytest>=8"]  # `uv run --project mcp pytest tests -q` (uv installs the dev group by default)
+
 [tool.uv]
 package = false  # `uv run --project mcp` keeps using the source file, not an installed copy

@@ -63,7 +63,7 @@ def test_context_guard_is_silent_below_the_hard_limit_and_fires_above(tmp_path, 
 
     import context_guard
 
-    monkeypatch.setattr(context_guard, "load_config", lambda: {"hard": 1000})
+    monkeypatch.setattr(context_guard, "load_config", lambda: {"hard": 1000, "idle_min": 500, "idle_minutes": 60})
     t = tmp_path / "t.jsonl"
     for tokens, fires in ((999, False), (1000, True)):
         t.write_text(json.dumps({"message": {"usage": {"input_tokens": tokens}}}), encoding="utf-8")
@@ -79,7 +79,7 @@ def test_context_guard_fires_once_per_session_mid_turn(tmp_path, monkeypatch, ca
 
     import context_guard
 
-    monkeypatch.setattr(context_guard, "load_config", lambda: {"hard": 1000})
+    monkeypatch.setattr(context_guard, "load_config", lambda: {"hard": 1000, "idle_min": 500, "idle_minutes": 60})
     monkeypatch.setattr(context_guard, "STATE", tmp_path / "state")
     monkeypatch.setattr("sys.argv", ["context_guard.py"])
     t = tmp_path / "t.jsonl"
@@ -104,7 +104,7 @@ def test_hook_check_flags_a_missing_script(tmp_path, monkeypatch):
     (tmp_path / ".claude").mkdir()
     (tmp_path / "mcp/.venv").mkdir(parents=True)
     hook = {"type": "command", "command": 'python "$CLAUDE_PROJECT_DIR"/mcp/reindex_hook.py'}
-    settings = {"hooks": {"PostToolUse": [{"hooks": [hook]}]}}
+    settings = {"hooks": {"PostToolUse": [{"hooks": [hook]}], "Stop": [{"hooks": [{**hook, "async": True}]}]}}
     (tmp_path / ".claude/settings.json").write_text(json.dumps(settings), encoding="utf-8")
     monkeypatch.setattr(invariants, "ROOT", tmp_path)
     assert any("hook path missing" in p for p in invariants.check_hook())
@@ -135,4 +135,33 @@ def test_skill_listing_budget_reads_newest_listing_since_settings_change(tmp_pat
 
 def test_handoff_config_defaults_when_the_project_has_none(tmp_path, monkeypatch):
     monkeypatch.setattr(handoff_common, "CONFIG", tmp_path / ".claude/handoff.json")
-    assert handoff_common.load_config() == {"hard": handoff_common.DEFAULT_HARD}
+    assert handoff_common.load_config() == {"hard": handoff_common.DEFAULT_HARD,
+                                            "idle_min": handoff_common.DEFAULT_IDLE_MIN,
+                                            "idle_minutes": handoff_common.DEFAULT_IDLE_MINUTES}
+
+
+def test_context_guard_offers_a_handoff_after_an_idle_gap(tmp_path, monkeypatch, capsys):
+    import io
+    from datetime import datetime, timedelta, timezone
+
+    import context_guard
+
+    monkeypatch.setattr(context_guard, "load_config", lambda: {"hard": 1000, "idle_min": 500, "idle_minutes": 60})
+    monkeypatch.setattr("sys.argv", ["context_guard.py"])
+    t = tmp_path / "t.jsonl"
+    now = datetime.now(timezone.utc)
+    cases = (  # (tokens, minutes since the last reply, event, offers a handoff)
+        (600, 90, "UserPromptSubmit", True),
+        (600, 10, "UserPromptSubmit", False),
+        (400, 90, "UserPromptSubmit", False),
+        (600, 90, "PostToolUse", False),
+    )
+    for tokens, minutes, name, fires in cases:
+        ts = (now - timedelta(minutes=minutes)).isoformat().replace("+00:00", "Z")
+        t.write_text(json.dumps({"type": "assistant", "timestamp": ts,
+                                 "message": {"usage": {"input_tokens": tokens}}}), encoding="utf-8")
+        event = {"transcript_path": str(t), "hook_event_name": name, "session_id": f"s{tokens}{minutes}"}
+        monkeypatch.setattr(context_guard, "STATE", tmp_path / "state")
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+        assert context_guard.main() == 0
+        assert ("was idle for" in capsys.readouterr().out) is fires, (tokens, minutes, name)

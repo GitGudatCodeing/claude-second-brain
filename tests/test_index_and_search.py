@@ -31,6 +31,23 @@ def test_changed_and_deleted_files_are_picked_up(index, vault):
     assert n[0] == n[1] == n[2]
 
 
+def test_a_file_inside_a_source_is_not_registered_as_its_own_source(index, vault):
+    index.index_paths([str(vault)])
+    garden = vault / "notes/garden.md"
+    assert "'unchanged': 1" in index.index_paths([str(garden)])
+    sources = [r[0] for r in index.db().execute("SELECT path FROM sources")]
+    assert sources == [str(vault.resolve())]
+
+
+def test_a_new_parent_source_absorbs_sources_inside_it(index, vault):
+    notes = vault / "notes"
+    index.index_paths([str(notes)])
+    index.index_paths([str(vault)])
+    sources = [r[0] for r in index.db().execute("SELECT path FROM sources")]
+    assert sources == [str(vault.resolve())]
+    assert "'unchanged': 3" in index.index_paths()
+
+
 def test_touched_but_unchanged_file_is_not_reembedded(index, vault):
     index.index_paths([str(vault)])
     garden = vault / "notes/garden.md"
@@ -149,6 +166,20 @@ def test_reindex_hook_works_for_a_vault_under_a_skip_dir_name(index, tmp_path, m
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"tool_input": {"file_path": str(note)}})))
     reindex_hook.main()
     assert "basil" in index.hybrid_search("basil", 1)[0][2]
+
+
+def test_reindex_hook_on_stop_resyncs_quietly(index, vault, monkeypatch, capsys):
+    import io
+    import json
+
+    import reindex_hook
+
+    index.index_paths([str(vault)])
+    (vault / "notes/bikes.md").unlink()  # a delete from the shell: no Write/Edit event
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"hook_event_name": "Stop"})))
+    reindex_hook.main()
+    assert capsys.readouterr().out == ""
+    assert all(Path(p).name != "bikes.md" for p, *_ in index.hybrid_search("bikes", 5))
 
 
 def test_file_vanishing_mid_sync_keeps_the_rest(index, vault, monkeypatch):
