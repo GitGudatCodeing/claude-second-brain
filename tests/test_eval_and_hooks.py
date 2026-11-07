@@ -104,7 +104,7 @@ def test_hook_check_flags_a_missing_script(tmp_path, monkeypatch):
     (tmp_path / ".claude").mkdir()
     (tmp_path / "mcp/.venv").mkdir(parents=True)
     hook = {"type": "command", "command": 'python "$CLAUDE_PROJECT_DIR"/mcp/reindex_hook.py'}
-    settings = {"hooks": {"PostToolUse": [{"hooks": [hook]}]}}
+    settings = {"hooks": {"PostToolUse": [{"hooks": [hook]}], "Stop": [{"hooks": [{**hook, "async": True}]}]}}
     (tmp_path / ".claude/settings.json").write_text(json.dumps(settings), encoding="utf-8")
     monkeypatch.setattr(invariants, "ROOT", tmp_path)
     assert any("hook path missing" in p for p in invariants.check_hook())

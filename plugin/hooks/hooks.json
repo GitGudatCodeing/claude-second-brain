@@ -43,6 +43,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx --python 3.12 --from vault-index python \"${CLAUDE_PLUGIN_ROOT}/hooks/reindex_hook.py\"",
+            "timeout": 120,
+            "async": true
+          }
+        ]
+      }
     ]
   }
 }

@@ -1,7 +1,9 @@
-"""Claude Code PostToolUse hook: re-index a file after Write/Edit.
+"""Claude Code hook that keeps the vault index in sync.
 
-Reads the hook JSON from stdin. Does nothing unless the edited file is an indexable
-type under a registered source. Always exits 0 so it never blocks the session.
+PostToolUse (Write/Edit): re-index the edited file, if it is an indexable type under a registered source.
+Stop (async): re-sync every source, which catches what the PostToolUse path cannot see: edits made from
+the shell or by scripts, git checkouts and deleted files. Unchanged files cost a hash check only.
+Reads the hook JSON from stdin. Always exits 0 so it never blocks the session.
 """
 import json
 import os
@@ -9,18 +11,26 @@ import sys
 from pathlib import Path
 
 
+def load_server():
+    try:
+        import server
+    except ImportError:  # run by the plugin with the published package (uvx --from vault-index)
+        import vault_index as server
+    return server
+
+
 def main() -> None:
     try:
         data = json.load(sys.stdin)
+        if data.get("hook_event_name") == "Stop":
+            load_server().index_paths()  # quiet: stdout of an async hook would reach the model
+            return
         raw = (data.get("tool_input") or {}).get("file_path")
         if not raw:
             return
         p = Path(raw).resolve()
 
-        try:  # heavy import, only after cheap checks
-            import server
-        except ImportError:  # run by the plugin with the published package (uvx --from vault-index)
-            import vault_index as server
+        server = load_server()  # heavy import, only after cheap checks
 
         if p.suffix.lower() not in server.EXTENSIONS or not p.is_file():
             return

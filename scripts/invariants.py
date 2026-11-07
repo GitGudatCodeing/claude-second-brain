@@ -139,6 +139,11 @@ def check_hook():
     if not hook:
         return ["no PostToolUse hook runs reindex_hook.py"]
     out = []
+    stop = [h for g in s.get("hooks", {}).get("Stop", []) for h in g.get("hooks", []) if "reindex_hook.py" in h["command"]]
+    if not stop:
+        out.append("no Stop hook runs reindex_hook.py (re-syncs shell edits and deletes after each turn)")
+    elif not all(h.get("async") for h in stop):
+        out.append("the Stop reindex_hook.py hook must be async, or every turn waits for the sync")
     for c in hook:
         if "\\" in c:
             out.append("hook command contains backslashes (Git Bash strips them; see L-0003)")
