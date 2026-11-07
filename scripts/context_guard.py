@@ -18,9 +18,8 @@ import json
 import re
 import sys
 import tempfile
-from pathlib import Path
-
 from datetime import datetime, timezone
+from pathlib import Path
 
 from handoff_common import context_tokens, last_reply_time, load_config, read_entries
 
