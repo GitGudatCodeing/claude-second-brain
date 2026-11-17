@@ -263,3 +263,79 @@ def test_search_falls_back_to_fusion_when_the_reranker_cannot_load(index, vault,
     monkeypatch.setattr(index, "RERANK", True)
     monkeypatch.setattr(index, "reranker", offline)
     assert index.hybrid_search("tomatoes water bikes", 2) == index.hybrid_search("tomatoes water bikes", 2, mode="fused")
+
+
+def test_opening_the_db_drops_a_source_nested_in_another_but_keeps_its_chunks(index, vault):
+    index.index_paths([str(vault)])
+    before = counts(index)
+    con = index.db()
+    inner = str((vault / "notes/garden.md").resolve())
+    con.execute("INSERT INTO sources(path) VALUES(?)", (inner,))
+    con.commit()
+    con.close()
+    index._db = None
+    sources = [r[0] for r in index.db().execute("SELECT path FROM sources")]
+    assert sources == [str(vault.resolve())]
+    assert counts(index) == before
+
+
+def test_is_under_ignores_case_on_windows(index):
+    sep = os.sep
+    assert index.is_under(f"C:{sep}Dev{sep}Vault{sep}a.md", f"c:{sep}dev{sep}vault") == (os.name == "nt")
+    assert not index.is_under(f"C:{sep}Dev{sep}Vault", f"C:{sep}Dev{sep}Vault")
+
+
+def test_a_failing_reindex_hook_writes_a_log_line(index, vault, monkeypatch):
+    import io
+    import json
+
+    import reindex_hook
+
+    def boom(*a, **k):
+        raise RuntimeError("disk on fire\nsecond line")
+
+    monkeypatch.setattr(index, "index_paths", boom)
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"hook_event_name": "Stop"})))
+    reindex_hook.main()
+    lines = (index.DB_PATH.parent / "reindex-hook.log").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1 and " Stop RuntimeError: disk on fire second line" in lines[0]
+
+
+def test_reindex_hook_log_stays_bounded(index, monkeypatch):
+    import reindex_hook
+
+    for i in range(205):
+        reindex_hook.log_failure("Stop", ValueError(f"e{i}"))
+    lines = (index.DB_PATH.parent / "reindex-hook.log").read_text(encoding="utf-8").splitlines()
+    assert 100 <= len(lines) <= 200 and lines[-1].endswith("ValueError: e204")
+
+def test_two_syncs_of_the_same_changed_file_leave_one_copy(index, vault, monkeypatch):
+    import sqlite3
+
+    import sqlite_vec
+
+    index.index_paths([str(vault)])
+    garden = vault / "notes/garden.md"
+    garden.write_text("# Garden\n\nNow the chillies need water too.\n", encoding="utf-8")
+    os.utime(garden, (garden.stat().st_atime, garden.stat().st_mtime + 5))
+    other = sqlite3.connect(index.DB_PATH, timeout=30)
+    other.enable_load_extension(True)
+    sqlite_vec.load(other)
+    real_embed = index.embed
+    calls = []
+
+    def embed_while_the_other_process_syncs(texts):
+        if not calls:  # the first connection has read the old row and is now embedding
+            calls.append(1)
+            assert index.index_file(other, garden, False) == "updated"
+            other.commit()
+        return real_embed(texts)
+
+    monkeypatch.setattr(index, "embed", embed_while_the_other_process_syncs)
+    con = index.db()
+    assert index.index_file(con, garden, False) == "unchanged"
+    con.commit()
+    other.close()
+    assert con.execute("SELECT COUNT(*) FROM files WHERE path=?", (str(garden),)).fetchone()[0] == 1
+    n = counts(index)
+    assert n[0] == n[1] == n[2]

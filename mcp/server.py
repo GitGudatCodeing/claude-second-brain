@@ -113,9 +113,19 @@ def db() -> sqlite3.Connection:
         )
         # Indexes from before the meta table were all built with the current model.
         con.execute("INSERT OR IGNORE INTO meta VALUES('model', ?)", (f"{MODEL_NAME} ({DIM})",))
+        drop_nested_sources(con)
         con.commit()
         _db = con
     return _db
+
+
+def drop_nested_sources(con: sqlite3.Connection) -> None:
+    """Forget sources that lie inside another source. Only the sources rows go: files and chunks hang off
+    the files table, not off a source, so everything stays indexed under the parent."""
+    sources = [r[0] for r in con.execute("SELECT path FROM sources")]
+    for s in sources:
+        if any(is_under(s, other) for other in sources):
+            con.execute("DELETE FROM sources WHERE path=?", (s,))
 
 
 def model_mismatch(con: sqlite3.Connection) -> str | None:
@@ -256,6 +266,13 @@ def index_file(con: sqlite3.Connection, p: Path, force: bool) -> str:
     chunks = chunk_text(text, p.suffix.lower() in {".md", ".markdown"})
     # Embed before touching the index, so a failure leaves the old version in place.
     vecs = embed([f"{h}\n{t}" if h else t for h, t in chunks]) if chunks else []
+    # Take the write lock, then look again: another process may have indexed this file while we embedded.
+    if not con.in_transaction:
+        con.execute("BEGIN IMMEDIATE")
+    row = con.execute("SELECT id, mtime, hash FROM files WHERE path=?", (key,)).fetchone()
+    if row and not force and row[2] == digest:
+        con.execute("UPDATE files SET mtime=? WHERE id=?", (st.st_mtime, row[0]))
+        return "unchanged"
     if row:
         drop_file(con, row[0])
     cur = con.execute("INSERT INTO files(path, mtime, hash) VALUES(?,?,?)", (key, st.st_mtime, digest))
@@ -305,7 +322,7 @@ def files_under(con: sqlite3.Connection, source: str) -> list[tuple[int, str]]:
 
 def is_under(path: str, root: str) -> bool:
     """True if `path` is strictly inside folder `root`."""
-    return path.startswith(root.rstrip("\\/") + os.sep)
+    return os.path.normcase(path).startswith(os.path.normcase(root.rstrip("\\/") + os.sep))
 
 
 def register_source(con: sqlite3.Connection, p: Path) -> None:
