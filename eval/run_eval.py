@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import math
 import re
@@ -37,6 +38,45 @@ K = 5
 SERVED_LIMIT = 8  # search_notes default; determines the fusion pool size
 MAX_DROP = 0.03
 METRICS = ("ndcg@5", "mrr", "recall@5")
+
+
+def golden_sha256(path: Path = GOLDEN) -> str:
+    """Hash of the golden file with line endings normalised, so CRLF vs LF does not change it."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def baseline_notes(base: dict, golden_hash: str, model: str, scores: dict) -> list[str]:
+    """Warnings and hints from comparing the saved baseline with the current golden set, model and scores."""
+    out = []
+    saved = base.get("golden_sha256")
+    if saved and saved != golden_hash:
+        out.append(f"WARNING: baseline is stale: golden set changed since {base.get('date')}; re-save with --save-baseline")
+    elif not saved:
+        out.append("hint: baseline has no golden_sha256; re-save with --save-baseline to track golden changes")
+    if base.get("model") and base["model"] != model:
+        out.append(f"WARNING: baseline model was {base['model']}, now {model}")
+    risen = [m for m in METRICS if scores[m] > base["scores"][m] + MAX_DROP]
+    if risen:
+        out.append(f"hint: {', '.join(risen)} rose more than {MAX_DROP}; the baseline can be re-saved with --save-baseline")
+    return out
+
+
+def question_moves(base: dict, current: dict, texts: dict) -> list[str]:
+    """Lines for questions whose ndcg moved against the baseline's per_question; a hint if it has none."""
+    old = base.get("per_question")
+    if old is None:
+        return ["hint: baseline has no per_question; re-save with --save-baseline to see which questions moved"]
+    out = []
+    for qid in sorted(set(old) | set(current)):
+        text = texts.get(qid, "")
+        text = text if len(text) <= 60 else text[:57] + "..."
+        if qid not in old:
+            out.append(f"  {qid} new  ndcg {current[qid]['ndcg@5']:.3f}  {text}")
+        elif qid not in current:
+            out.append(f"  {qid} removed  (was ndcg {old[qid]['ndcg@5']:.3f})")
+        elif abs(current[qid]["ndcg@5"] - old[qid]["ndcg@5"]) > 0.001:
+            out.append(f"  {qid} ndcg {old[qid]['ndcg@5']:.3f} -> {current[qid]['ndcg@5']:.3f}  {text}")
+    return out
 
 
 def load_golden() -> list[dict]:
@@ -87,8 +127,10 @@ def grep_search(query: str, limit: int) -> list[tuple[str, str, str, float]]:
     return [(p, h, t, float(n)) for n, _, p, h, t in scored[:limit]]
 
 
-def run(mode: str, golden: list[dict], verbose: bool) -> dict:
+def run(mode: str, golden: list[dict], verbose: bool) -> tuple[dict, dict]:
+    """Mean scores, and each question id mapped to its scores (rounded to 4 decimals)."""
     per_q = []
+    by_id = {}
     for q in golden:
         if mode == "grep":
             results = grep_search(q["q"], SERVED_LIMIT)
@@ -96,12 +138,13 @@ def run(mode: str, golden: list[dict], verbose: bool) -> dict:
             results = server.hybrid_search(q["q"], SERVED_LIMIT, mode=mode)
         s, found = score(q, results)
         per_q.append(s)
+        by_id[q["id"]] = {m: round(s[m], 4) for m in METRICS}
         if verbose:
             print(f"  {q['id']} ndcg={s['ndcg@5']:.2f} mrr={s['mrr']:.2f} recall={s['recall@5']:.2f}  {q['q']}")
             if s["recall@5"] < 1:
                 got = [f"{Path(p).name}#{h.split(' > ')[-1][:30]}" for p, h, _, _ in results[:K]]
                 print(f"      top{K}: {got}")
-    return {m: sum(s[m] for s in per_q) / len(per_q) for m in METRICS}
+    return {m: sum(s[m] for s in per_q) / len(per_q) for m in METRICS}, by_id
 
 
 def main() -> int:
@@ -129,10 +172,11 @@ def main() -> int:
     golden = load_golden()
     modes = ["hybrid", "fused", "fts", "vec", "grep"] if args.modes == "all" else ["hybrid"]
     scores = {}
+    per_question = {}
     for mode in modes:
         if args.verbose:
             print(f"\n[{mode}]")
-        scores[mode] = run(mode, golden, args.verbose)
+        scores[mode], per_question[mode] = run(mode, golden, args.verbose)
 
     print(f"\n{len(golden)} questions, K={K}, model={server.MODEL_NAME}")
     print(f"{'mode':8}" + "".join(f"{m:>10}" for m in METRICS))
@@ -143,7 +187,8 @@ def main() -> int:
     if args.save_baseline:
         BASELINE.write_text(json.dumps({
             "date": dt.date.today().isoformat(), "model": server.MODEL_NAME,
-            "questions": len(golden), "scores": hybrid,
+            "questions": len(golden), "golden_sha256": golden_sha256(), "scores": hybrid,
+            "per_question": per_question["hybrid"],
         }, indent=2) + "\n", encoding="utf-8")
         print(f"\nbaseline saved to {BASELINE.relative_to(ROOT)}")
         return 0
@@ -153,9 +198,14 @@ def main() -> int:
     base = json.loads(BASELINE.read_text(encoding="utf-8"))
     if base["questions"] != len(golden):
         print(f"\nnote: baseline had {base['questions']} questions, now {len(golden)}; re-save the baseline")
+    for note in baseline_notes(base, golden_sha256(), server.MODEL_NAME, hybrid):
+        print(f"\n{note}")
     drops = [m for m in METRICS if hybrid[m] < base["scores"][m] - MAX_DROP]
     print(f"\nvs baseline {base['date']}: " + ", ".join(
         f"{m} {hybrid[m] - base['scores'][m]:+.3f}" for m in METRICS))
+    moves = question_moves(base, per_question["hybrid"], {q["id"]: q["q"] for q in golden})
+    if moves:
+        print("\n".join(moves))
     if drops:
         print(f"REGRESSION (> {MAX_DROP} drop): {', '.join(drops)}")
         return 1

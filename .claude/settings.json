@@ -1,7 +1,4 @@
 {
-  "enabledPlugins": {
-    "audit-suite@anthropic-plugin-directory": false
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -10,17 +7,6 @@
             "type": "command",
             "command": "python \"$CLAUDE_PROJECT_DIR\"/scripts/invariants.py --hook",
             "timeout": 30
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR\"/scripts/context_guard.py",
-            "timeout": 10
           }
         ]
       }
@@ -54,6 +40,29 @@
             "type": "command",
             "command": "uv run --project \"$CLAUDE_PROJECT_DIR\"/mcp python \"$CLAUDE_PROJECT_DIR\"/mcp/reindex_hook.py",
             "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"$CLAUDE_PROJECT_DIR\"/mcp python \"$CLAUDE_PROJECT_DIR\"/mcp/reindex_hook.py",
+            "timeout": 120,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR\"/scripts/context_guard.py",
+            "timeout": 10
           }
         ]
       }

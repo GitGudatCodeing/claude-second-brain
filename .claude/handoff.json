@@ -1,3 +1,5 @@
 {
-  "hard_tokens": 250000
+  "hard_tokens": 250000,
+  "idle_min_tokens": 150000,
+  "idle_minutes": 60
 }

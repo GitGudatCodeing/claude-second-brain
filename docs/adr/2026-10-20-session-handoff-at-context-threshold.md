@@ -35,3 +35,16 @@ Measured 22 sessions since 2026-10-21 (`scripts/session_sizes.py`). The 450k lim
 - Re-measured 41 sessions since 2026-10-20: 69% of context tokens are spent in calls above 200k, and re-reading context is 71% of cost. Replaying the sessions with a restart at about 90k: 350k keeps 69% of today's context tokens, 250k keeps 56%, 200k keeps 48%, with about 13, 27 and 48 handoffs across 46 sessions. Chose 250k as the balance between cost and interruptions.
 - Closed the gap noted above: `context_guard.py` also runs as an async PostToolUse hook and fires once per session past the limit, so a long autonomous turn hears about it mid-turn. Pattern from the personal-starter-kit `context_budget.py`, whose author probed that async `additionalContext` reaches the model with a later tool result. Not yet seen live here.
 - Re-measure on 2026-11-07 with the fixed counter. If fresh sessions pick up cleanly, try 200k; if handoff notes lose detail, go back to 300k.
+
+## Update (2026-11-02): guard runs in every project
+- The guard hooks lived in this folder's `.claude/settings.json`, so sessions in other projects never got them: the man-man sessions on 2026-10-30 reached 500k and 700k. Every SecondBrain session past the limit since 2026-10-27 got its notices; the silent ones predate that setup.
+- Moved the UserPromptSubmit and PostToolUse `context_guard.py` hooks to `~/.claude/settings.json`. Other projects use the default 250k (no `handoff.json` there); the global `/handoff` already writes notes to this folder.
+- The PreCompact snapshot stays project-level: elsewhere it would write `docs/handoffs/auto/` into other repos.
+- The mid-turn PostToolUse notice is now seen live: it appears in 6 SecondBrain session transcripts.
+
+## Update (2026-11-07): keep 250k, cost model
+- Measured 89 sessions since 2026-11-01. 31 reached 250k; every one got the notice and wrote a note, and 12 of 14 notes written today were picked up. Fresh sessions now start at about 73k.
+- A handoff is not free: writing the note costs about 75k input-equivalent tokens (cache read 0.1, 1h cache write 2, output 5), and a new session spends about 11-13 calls (230-270k) orienting before its first edit. Fresh non-handoff sessions orient just as much.
+- Model: cost per productive call = 0.05(S'+L) + w + H·g/(L-S'), optimum L* = S' + sqrt(20·H·g). Three independent checks put the optimum between 225k and 255k, with the curve within about 3% from 200k to 250k. Most sessions end below the limit (median peak 128k), so a lower limit adds handoffs without saving much. Tool-error rate is flat at about 2% up to 250k, then rises (3.5% at 250-300k, 6% at 350k). Kept 250k.
+- The bigger cost is cache expiry: 63 full cache rewrites, almost all after idle gaps over 1h at a median 196k context, were 12% of spend. Continuing in a session after its handoff note is written also costs more than the note itself.
+- Added an idle nudge: on a prompt below the hard limit, if the context is at least `idle_min_tokens` (150k) and the last reply is older than `idle_minutes` (60, the cache TTL), `context_guard.py` asks Claude to offer a handoff. The cache is already gone, so a fresh session costs little extra. It is an offer, not a requirement.

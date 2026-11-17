@@ -6,12 +6,12 @@
     "url": "https://github.com/GitGudatCodeing/claude-second-brain",
     "source": "github"
   },
-  "version": "0.4.2",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "vault-index",
-      "version": "0.4.2",
+      "version": "0.5.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

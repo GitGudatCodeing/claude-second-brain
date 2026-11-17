@@ -61,3 +61,11 @@ def vault(tmp_path):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text, encoding="utf-8")
     return root
+
+
+@pytest.fixture(autouse=True)
+def isolated_live_index_folder(tmp_path, monkeypatch):
+    """invariants checks read the live index folder (DB, reindex-hook.log); point them at a temp one."""
+    import invariants
+
+    monkeypatch.setattr(invariants, "INDEX_DB", tmp_path / "live" / "vault-index.db")

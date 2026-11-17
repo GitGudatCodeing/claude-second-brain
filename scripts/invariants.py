@@ -8,13 +8,14 @@ Standard library only, no model load, so it is cheap enough for every session st
 from __future__ import annotations
 
 import glob
+import hashlib
 import json
 import os
 import re
 import shutil
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -139,6 +140,11 @@ def check_hook():
     if not hook:
         return ["no PostToolUse hook runs reindex_hook.py"]
     out = []
+    stop = [h for g in s.get("hooks", {}).get("Stop", []) for h in g.get("hooks", []) if "reindex_hook.py" in h["command"]]
+    if not stop:
+        out.append("no Stop hook runs reindex_hook.py (re-syncs shell edits and deletes after each turn)")
+    elif not all(h.get("async") for h in stop):
+        out.append("the Stop reindex_hook.py hook must be async, or every turn waits for the sync")
     for c in hook:
         if "\\" in c:
             out.append("hook command contains backslashes (Git Bash strips them; see L-0003)")
@@ -147,6 +153,15 @@ def check_hook():
                 out.append(f"hook path missing: {path}")
     if not (ROOT / "mcp/.venv").is_dir():
         out.append("mcp/.venv missing; run `uv sync` in mcp/")
+    log = INDEX_DB.parent / "reindex-hook.log"
+    if log.is_file():
+        lines = [l for l in log.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+        try:
+            when = datetime.fromisoformat(lines[-1].split(" ", 1)[0]) if lines else None
+        except ValueError:
+            when = None
+        if when and (datetime.now() - when).total_seconds() < 24 * 3600:
+            out.append(f"hook failed in the last 24 hours ({log}): {lines[-1]}")
     return out
 
 
@@ -179,11 +194,49 @@ def check_handoff():
     cfg = json.loads((ROOT / ".claude/handoff.json").read_text(encoding="utf-8"))
     if not isinstance(cfg.get("hard_tokens"), int) or cfg["hard_tokens"] <= 0:
         out.append("handoff.json: hard_tokens must be a positive integer")
+    for key in ("idle_min_tokens", "idle_minutes"):
+        if key in cfg and (not isinstance(cfg[key], int) or cfg[key] <= 0):
+            out.append(f"handoff.json: {key} must be a positive integer")
+    if cfg.get("idle_min_tokens", 0) >= cfg.get("hard_tokens", 1):
+        out.append("handoff.json: idle_min_tokens must be below hard_tokens")
     if not any((d / "handoff.md").is_file() for d in (ROOT / ".claude/commands", HOME / ".claude/commands")):
         out.append("handoff.md missing from .claude/commands and ~/.claude/commands (/handoff command)")
     if "docs/handoffs/auto" not in ignores_for(ROOT):
         out.append(".indexignore must exclude docs/handoffs/auto (raw prompt snapshots)")
     return out
+
+
+STALE_HANDOFF_DAYS = 7
+
+
+def stale_handoffs(folder: Path, today: date) -> list[str]:
+    """Names of handoff notes with `status: open` dated more than STALE_HANDOFF_DAYS before today.
+    A missing folder, a file without frontmatter or any other status is never flagged."""
+    out = []
+    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        m = re.match(r"---\r?\n(.*?)\r?\n---", f.read_text(encoding="utf-8"), re.S)
+        if not m:
+            continue
+        fields = dict(re.findall(r"^(\w+):[ \t]*(.*?)[ \t]*$", m.group(1), re.M))
+        if fields.get("status") != "open":
+            continue
+        raw = fields.get("date") or f.name[:10]
+        try:
+            d = date.fromisoformat(raw)
+        except ValueError:
+            continue
+        if (today - d).days > STALE_HANDOFF_DAYS:
+            out.append(f.name)
+    return out
+
+
+@check("handoff-notes: no note left open for more than 7 days")
+def check_handoff_notes():
+    stale = stale_handoffs(ROOT / "docs/handoffs", date.today())
+    if not stale:
+        return []
+    return [f"{len(stale)} handoff note(s) open over {STALE_HANDOFF_DAYS} days: {', '.join(stale)}. "
+            "Pick each up, close it, or set `status: parked` in docs/handoffs/"]
 
 
 def ignores_for(root: Path) -> list[str]:
@@ -225,6 +278,11 @@ def check_index():
     sources = [r[0] for r in con.execute("SELECT path FROM sources")]
     if str(ROOT) not in sources:
         out.append(f"{ROOT} is not a registered source")
+    for s in sources:
+        low = os.path.normcase(s)
+        parent = next((o for o in sources if low.startswith(os.path.normcase(o.rstrip("\\/") + os.sep))), None)
+        if parent:
+            out.append(f"source {s} is inside source {parent}; counted twice (the server drops it when it next opens the DB)")
     indexed = {p: m for p, m in con.execute("SELECT path, mtime FROM files")}
     stale, missing = [], []
     for s in sources:
@@ -283,6 +341,12 @@ def check_golden():
     if not golden.exists():
         return ["eval/golden.jsonl missing"]
     out = []
+    baseline = ROOT / "eval/baseline.json"
+    if baseline.exists():
+        saved = json.loads(baseline.read_text(encoding="utf-8")).get("golden_sha256")
+        current = hashlib.sha256(golden.read_bytes().replace(b"\r\n", b"\n")).hexdigest()  # same as run_eval.golden_sha256
+        if saved and saved != current:
+            out.append("eval/baseline.json is stale: golden.jsonl changed since it was saved; run run_eval.py --save-baseline")
     if golden.suffix in INDEXED_EXT:
         out.append("golden set has an indexed extension; its questions would match themselves")
     heading_re = re.compile(r"^#{1,6}\s+(.*)$", re.M)
