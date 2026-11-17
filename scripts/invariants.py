@@ -8,13 +8,14 @@ Standard library only, no model load, so it is cheap enough for every session st
 from __future__ import annotations
 
 import glob
+import hashlib
 import json
 import os
 import re
 import shutil
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -152,6 +153,15 @@ def check_hook():
                 out.append(f"hook path missing: {path}")
     if not (ROOT / "mcp/.venv").is_dir():
         out.append("mcp/.venv missing; run `uv sync` in mcp/")
+    log = INDEX_DB.parent / "reindex-hook.log"
+    if log.is_file():
+        lines = [l for l in log.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+        try:
+            when = datetime.fromisoformat(lines[-1].split(" ", 1)[0]) if lines else None
+        except ValueError:
+            when = None
+        if when and (datetime.now() - when).total_seconds() < 24 * 3600:
+            out.append(f"hook failed in the last 24 hours ({log}): {lines[-1]}")
     return out
 
 
@@ -196,6 +206,39 @@ def check_handoff():
     return out
 
 
+STALE_HANDOFF_DAYS = 7
+
+
+def stale_handoffs(folder: Path, today: date) -> list[str]:
+    """Names of handoff notes with `status: open` dated more than STALE_HANDOFF_DAYS before today.
+    A missing folder, a file without frontmatter or any other status is never flagged."""
+    out = []
+    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        m = re.match(r"---\r?\n(.*?)\r?\n---", f.read_text(encoding="utf-8"), re.S)
+        if not m:
+            continue
+        fields = dict(re.findall(r"^(\w+):[ \t]*(.*?)[ \t]*$", m.group(1), re.M))
+        if fields.get("status") != "open":
+            continue
+        raw = fields.get("date") or f.name[:10]
+        try:
+            d = date.fromisoformat(raw)
+        except ValueError:
+            continue
+        if (today - d).days > STALE_HANDOFF_DAYS:
+            out.append(f.name)
+    return out
+
+
+@check("handoff-notes: no note left open for more than 7 days")
+def check_handoff_notes():
+    stale = stale_handoffs(ROOT / "docs/handoffs", date.today())
+    if not stale:
+        return []
+    return [f"{len(stale)} handoff note(s) open over {STALE_HANDOFF_DAYS} days: {', '.join(stale)}. "
+            "Pick each up, close it, or set `status: parked` in docs/handoffs/"]
+
+
 def ignores_for(root: Path) -> list[str]:
     """Same parsing as mcp/server.py load_ignores."""
     f = root / ".indexignore"
@@ -235,6 +278,11 @@ def check_index():
     sources = [r[0] for r in con.execute("SELECT path FROM sources")]
     if str(ROOT) not in sources:
         out.append(f"{ROOT} is not a registered source")
+    for s in sources:
+        low = os.path.normcase(s)
+        parent = next((o for o in sources if low.startswith(os.path.normcase(o.rstrip("\\/") + os.sep))), None)
+        if parent:
+            out.append(f"source {s} is inside source {parent}; counted twice (the server drops it when it next opens the DB)")
     indexed = {p: m for p, m in con.execute("SELECT path, mtime FROM files")}
     stale, missing = [], []
     for s in sources:
@@ -293,6 +341,12 @@ def check_golden():
     if not golden.exists():
         return ["eval/golden.jsonl missing"]
     out = []
+    baseline = ROOT / "eval/baseline.json"
+    if baseline.exists():
+        saved = json.loads(baseline.read_text(encoding="utf-8")).get("golden_sha256")
+        current = hashlib.sha256(golden.read_bytes().replace(b"\r\n", b"\n")).hexdigest()  # same as run_eval.golden_sha256
+        if saved and saved != current:
+            out.append("eval/baseline.json is stale: golden.jsonl changed since it was saved; run run_eval.py --save-baseline")
     if golden.suffix in INDEXED_EXT:
         out.append("golden set has an indexed extension; its questions would match themselves")
     heading_re = re.compile(r"^#{1,6}\s+(.*)$", re.M)

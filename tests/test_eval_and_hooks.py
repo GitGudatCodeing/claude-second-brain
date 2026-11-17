@@ -165,3 +165,122 @@ def test_context_guard_offers_a_handoff_after_an_idle_gap(tmp_path, monkeypatch,
         monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
         assert context_guard.main() == 0
         assert ("was idle for" in capsys.readouterr().out) is fires, (tokens, minutes, name)
+
+
+def test_golden_hash_ignores_line_endings(tmp_path):
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    a.write_bytes(b'{"id": 1}\n{"id": 2}\n')
+    b.write_bytes(b'{"id": 1}\r\n{"id": 2}\r\n')
+    assert run_eval.golden_sha256(a) == run_eval.golden_sha256(b)
+    b.write_bytes(b'{"id": 1}\r\n{"id": 3}\r\n')
+    assert run_eval.golden_sha256(a) != run_eval.golden_sha256(b)
+
+
+def test_baseline_notes_warn_on_stale_hash_model_and_rises():
+    scores = {"ndcg@5": 0.5, "mrr": 0.5, "recall@5": 0.5}
+    base = {"date": "2026-10-24", "model": "m", "golden_sha256": "old", "scores": dict(scores)}
+    assert run_eval.baseline_notes(base, "old", "m", scores) == []
+    stale = run_eval.baseline_notes(base, "new", "m", scores)
+    assert len(stale) == 1 and "baseline is stale: golden set changed since 2026-10-24" in stale[0]
+    assert "no golden_sha256" in run_eval.baseline_notes({**base, "golden_sha256": None}, "new", "m", scores)[0]
+    assert "model" in run_eval.baseline_notes(base, "old", "other", scores)[0]
+    up = run_eval.baseline_notes(base, "old", "m", {**scores, "mrr": 0.6})
+    assert len(up) == 1 and "mrr" in up[0] and "re-saved" in up[0]
+
+
+def _pq(ndcg):
+    return {"ndcg@5": ndcg, "mrr": 1.0, "recall@5": 1.0}
+
+
+def test_question_moves_hint_when_baseline_has_no_per_question():
+    out = run_eval.question_moves({"scores": {}}, {"q1": _pq(1.0)}, {"q1": "x"})
+    assert len(out) == 1 and "no per_question" in out[0]
+
+
+def test_question_moves_unchanged_is_silent():
+    base = {"per_question": {"q1": _pq(0.5), "q2": _pq(1.0)}}
+    assert run_eval.question_moves(base, {"q1": _pq(0.5005), "q2": _pq(1.0)}, {}) == []
+
+
+def test_question_moves_lists_a_drop_with_truncated_text():
+    base = {"per_question": {"q1": _pq(1.0), "q2": _pq(1.0)}}
+    out = run_eval.question_moves(base, {"q1": _pq(0.5), "q2": _pq(1.0)}, {"q1": "w" * 100})
+    assert len(out) == 1 and "q1" in out[0] and "1.000 -> 0.500" in out[0] and "w" * 100 not in out[0]
+
+
+def test_question_moves_lists_new_and_removed_ids():
+    base = {"per_question": {"old": _pq(0.7)}}
+    out = run_eval.question_moves(base, {"fresh": _pq(0.9)}, {"fresh": "a question"})
+    assert any("fresh new" in line for line in out) and any("old removed" in line for line in out)
+
+
+def test_golden_check_fails_on_a_stale_baseline_hash(tmp_path, monkeypatch):
+    (tmp_path / "eval").mkdir()
+    (tmp_path / "eval/golden.jsonl").write_bytes(b"")
+    monkeypatch.setattr(invariants, "ROOT", tmp_path)
+    base = tmp_path / "eval/baseline.json"
+    base.write_text(json.dumps({"scores": {}}), encoding="utf-8")
+    assert invariants.check_golden() == []  # no hash yet: passes until the next re-save
+    base.write_text(json.dumps({"golden_sha256": "stale"}), encoding="utf-8")
+    assert any("stale" in p for p in invariants.check_golden())
+    base.write_text(json.dumps({"golden_sha256": run_eval.golden_sha256(tmp_path / "eval/golden.jsonl")}), encoding="utf-8")
+    assert invariants.check_golden() == []
+
+
+def test_hook_check_quotes_a_recent_log_entry_only(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / "mcp/.venv").mkdir(parents=True)
+    (tmp_path / "mcp/reindex_hook.py").write_text("", encoding="utf-8")
+    hook = {"type": "command", "command": 'python "$CLAUDE_PROJECT_DIR"/mcp/reindex_hook.py'}
+    settings = {"hooks": {"PostToolUse": [{"hooks": [hook]}], "Stop": [{"hooks": [{**hook, "async": True}]}]}}
+    (tmp_path / ".claude/settings.json").write_text(json.dumps(settings), encoding="utf-8")
+    monkeypatch.setattr(invariants, "ROOT", tmp_path)
+    monkeypatch.setattr(invariants, "INDEX_DB", tmp_path / "vault-index.db")
+    log = tmp_path / "reindex-hook.log"
+    old = (datetime.now() - timedelta(days=2)).isoformat(timespec="seconds")
+    log.write_text(f"{old} Stop OSError: old\n", encoding="utf-8")
+    assert invariants.check_hook() == []
+    new = datetime.now().isoformat(timespec="seconds")
+    log.write_text(f"{old} Stop OSError: old\n{new} Stop OSError: fresh\n", encoding="utf-8")
+    assert any("OSError: fresh" in p for p in invariants.check_hook())
+
+
+def write_handoff(folder, name, status, date_line=True):
+    folder.mkdir(exist_ok=True)
+    head = "date: 2026-11-01\n" if date_line else ""
+    (folder / name).write_text(f"---\n{head}status: {status}\n---\n\n# x\n", encoding="utf-8")
+
+
+def test_stale_handoffs_flags_only_open_notes_over_seven_days(tmp_path):
+    from datetime import date
+
+    today = date(2026, 11, 17)
+    h = tmp_path / "handoffs"
+    assert invariants.stale_handoffs(h, today) == []  # no folder passes
+    write_handoff(h, "a.md", "open")  # 16 days
+    assert invariants.stale_handoffs(h, today) == ["a.md"]
+    for status in ("parked", "picked-up", "closed"):
+        (h / "a.md").unlink()
+        write_handoff(h, "a.md", status)
+        assert invariants.stale_handoffs(h, today) == []
+    (h / "b.md").write_text("no frontmatter\n", encoding="utf-8")
+    assert invariants.stale_handoffs(h, today) == []
+
+
+def test_stale_handoffs_boundary_is_seven_days(tmp_path):
+    from datetime import date
+
+    h = tmp_path / "handoffs"
+    write_handoff(h, "a.md", "open")  # dated 2026-11-01
+    assert invariants.stale_handoffs(h, date(2026, 11, 8)) == []  # 7 days old
+    assert invariants.stale_handoffs(h, date(2026, 11, 9)) == ["a.md"]  # 8 days old
+
+
+def test_stale_handoffs_date_falls_back_to_file_name(tmp_path):
+    from datetime import date
+
+    h = tmp_path / "handoffs"
+    write_handoff(h, "2026-11-01-topic.md", "open", date_line=False)
+    assert invariants.stale_handoffs(h, date(2026, 11, 17)) == ["2026-11-01-topic.md"]
+    assert invariants.stale_handoffs(h, date(2026, 11, 5)) == []

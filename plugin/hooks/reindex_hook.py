@@ -8,7 +8,12 @@ Reads the hook JSON from stdin. Always exits 0 so it never blocks the session.
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
+
+LOG_NAME = "reindex-hook.log"
+LOG_MAX_LINES = 200  # past this, keep the last LOG_KEEP_LINES
+LOG_KEEP_LINES = 100
 
 
 def load_server():
@@ -19,9 +24,31 @@ def load_server():
     return server
 
 
+def log_failure(event: str, exc: Exception) -> None:
+    """Append one line to reindex-hook.log next to the index DB, so a broken hook is visible. Never raises."""
+    try:
+        try:
+            folder = load_server().DB_PATH.parent
+        except Exception:
+            folder = Path.home() / ".mcp-memory"
+        path = folder / LOG_NAME
+        msg = " ".join(f"{type(exc).__name__}: {exc}".split())
+        line = f"{datetime.now().isoformat(timespec='seconds')} {event or '-'} {msg}"
+        folder.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8", newline="") as f:
+            f.write(line + "\n")
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if len(lines) > LOG_MAX_LINES:
+            path.write_text("\n".join(lines[-LOG_KEEP_LINES:]) + "\n", encoding="utf-8", newline="")
+    except Exception:
+        pass
+
+
 def main() -> None:
+    event = ""
     try:
         data = json.load(sys.stdin)
+        event = str(data.get("hook_event_name") or "PostToolUse")
         if data.get("hook_event_name") == "Stop":
             load_server().index_paths()  # quiet: stdout of an async hook would reach the model
             return
@@ -47,6 +74,7 @@ def main() -> None:
         print(f"vault-index: {p.name} {result}", file=sys.stderr)
     except Exception as e:  # never break the editing flow
         print(f"vault-index hook error: {e}", file=sys.stderr)
+        log_failure(event, e)
 
 
 if __name__ == "__main__":
