@@ -37,4 +37,4 @@ Markdown is chunked by heading. A `.indexignore` in a source folder lists relati
 | `VAULT_MODEL_CACHE` | `~/.mcp-memory/models` |
 | `VAULT_RERANK` | `1` (set `0` to skip the rerank; about 200 ms faster per search) |
 
-Python 3.10 to 3.13 (`--python 3.12` keeps uvx off newer Pythons that onnxruntime does not support yet). MIT license.
+Python 3.10 to 3.14 (`--python 3.12` keeps uvx off newer Pythons that onnxruntime does not support yet). MIT license.

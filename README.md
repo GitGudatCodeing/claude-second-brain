@@ -1,7 +1,7 @@
 # claude-second-brain
 
 [![CI](https://github.com/GitGudatCodeing/claude-second-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/GitGudatCodeing/claude-second-brain/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.10%20to%203.13-blue)
+![Python](https://img.shields.io/badge/python-3.10%20to%203.14-blue)
 [![PyPI](https://img.shields.io/pypi/v/vault-index)](https://pypi.org/project/vault-index/)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -50,7 +50,7 @@ flowchart LR
 
 | Hook | Script | What it does |
 |---|---|---|
-| SessionStart | `scripts/invariants.py --hook` | 10 checks: MCP servers launchable, graph sources exist, index fresh, hooks wired, golden labels valid, lessons well-formed, context budget. |
+| SessionStart | `scripts/invariants.py --hook` | 12 checks: MCP servers launchable, graph sources exist, index fresh, hooks wired, no handoff left open over a week, golden labels valid, lessons well-formed, context budget. |
 | PostToolUse (Write, Edit) | `mcp/reindex_hook.py` | Re-indexes the edited file if it sits under a registered source. Never blocks. |
 | UserPromptSubmit, PostToolUse (async) | `scripts/context_guard.py` | Reads the real context size from the transcript. Silent until 250k tokens (`.claude/handoff.json`), then requires `/handoff`: a note plus a card to start the fresh session. On every prompt, and once per session mid-turn. |
 | PreCompact | `scripts/precompact_snapshot.py` | Saves recent requests and touched files to `docs/handoffs/auto/` as a fallback before compaction. |
@@ -88,7 +88,7 @@ MCP tools: `index_paths`, `search_notes`, `get_note`, `list_sources`, `remove_so
 Installed as a plugin, the commands carry its name: `/second-brain:recall`, `/second-brain:adr` and so on.
 
 ## Quickstart
-Needs [uv](https://docs.astral.sh/uv/) (it fetches Python 3.10 to 3.13), Node.js for the memory server, and Claude Code.
+Needs [uv](https://docs.astral.sh/uv/) (it fetches Python 3.10 to 3.14), Node.js for the memory server, and Claude Code.
 
 ### As a plugin
 In the folder that holds your notes:
